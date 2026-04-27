@@ -10,11 +10,17 @@ function formatRole(role) {
   return (role || 'viewer').replaceAll('_', ' ')
 }
 
+function formatDate(value) {
+  if (!value) return '—'
+  return new Date(value).toLocaleString()
+}
+
 export default function App() {
   const [session, setSession] = useState(null)
   const [profile, setProfile] = useState(null)
   const [loading, setLoading] = useState(true)
   const [bookings, setBookings] = useState([])
+  const [applications, setApplications] = useState([])
   const [selectedBooking, setSelectedBooking] = useState(null)
   const [activeTab, setActiveTab] = useState('appointments')
   const [search, setSearch] = useState('')
@@ -40,14 +46,18 @@ export default function App() {
       if (!session?.user) {
         setProfile(null)
         setBookings([])
+        setApplications([])
         setLoading(false)
         return
       }
 
       setLoading(true)
-      const [{ data: profileData, error: profileError }] = await Promise.all([
-        supabase.from('profiles').select('*').eq('id', session.user.id).single()
-      ])
+
+      const { data: profileData, error: profileError } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', session.user.id)
+        .single()
 
       if (profileError) {
         setError(profileError.message)
@@ -55,7 +65,7 @@ export default function App() {
         setProfile(profileData)
       }
 
-      await loadBookings()
+      await Promise.all([loadBookings(), loadApplications()])
       setLoading(false)
     }
 
@@ -76,6 +86,20 @@ export default function App() {
     }
 
     setBookings(data || [])
+  }
+
+  async function loadApplications() {
+    const { data, error } = await supabase
+      .from('job_applications')
+      .select('*')
+      .order('created_at', { ascending: false })
+
+    if (error) {
+      setError(error.message)
+      return
+    }
+
+    setApplications(data || [])
   }
 
   async function signOut() {
@@ -103,6 +127,29 @@ export default function App() {
     )
   }, [bookings, search])
 
+  const filteredApplications = useMemo(() => {
+    const term = search.trim().toLowerCase()
+    if (!term) return applications
+
+    return applications.filter((app) =>
+      [
+        app.name,
+        app.phone,
+        app.email,
+        app.job_type,
+        app.experience,
+        app.certifications,
+        app.start_date,
+        app.message,
+        app.status
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase()
+        .includes(term)
+    )
+  }, [applications, search])
+
   if (loading) {
     return <div className="loading-screen">Loading CR8 Admin Portal...</div>
   }
@@ -127,6 +174,9 @@ export default function App() {
           <button className={activeTab === 'calendar' ? 'active' : ''} onClick={() => setActiveTab('calendar')}>
             Calendar
           </button>
+          <button className={activeTab === 'applications' ? 'active' : ''} onClick={() => setActiveTab('applications')}>
+            Applications
+          </button>
           <button className={activeTab === 'leads' ? 'active' : ''} onClick={() => setActiveTab('leads')}>
             Leads
           </button>
@@ -147,107 +197,84 @@ export default function App() {
             <h1>
               {activeTab === 'appointments' && 'Appointments'}
               {activeTab === 'calendar' && 'Calendar'}
+              {activeTab === 'applications' && 'Applications'}
               {activeTab === 'leads' && 'Lead pipeline'}
             </h1>
           </div>
 
-       <div className="header-actions">
-          <input
-            className="search-input"
-            placeholder="Search appointments..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
+          <div className="header-actions">
+            <input
+              className="search-input"
+              placeholder={
+                activeTab === 'applications'
+                  ? 'Search applications...'
+                  : 'Search appointments...'
+              }
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
 
-          <button
-            className="primary-btn"
-            onClick={() => setShowNewModal(true)}
-          >
-            + New Appointment
-          </button>
-        </div>
+            {activeTab !== 'applications' ? (
+              <button
+                className="primary-btn"
+                onClick={() => setShowNewModal(true)}
+              >
+                + New Appointment
+              </button>
+            ) : null}
+          </div>
         </header>
 
         {error ? <div className="error-box">{error}</div> : null}
 
         {activeTab === 'appointments' ? (
           <>
-          <section className="stats-grid stats-grid-owner">
-            <article className="stat-card">
-              <span>Today Appointments</span>
-              <strong>
-                {
-                  filteredBookings.filter(
-                    (b) =>
-                      b.appointment_date ===
-                      new Date().toISOString().split('T')[0]
-                  ).length
-                }
-              </strong>
-            </article>
+            <section className="stats-grid stats-grid-owner">
+              <article className="stat-card">
+                <span>Today Appointments</span>
+                <strong>{filteredBookings.filter((b) => b.appointment_date === new Date().toISOString().split('T')[0]).length}</strong>
+              </article>
 
-            <article className="stat-card">
-              <span>Overdue Follow Ups</span>
-              <strong>
-                {
-                  filteredBookings.filter(
-                    (b) => b.status === 'follow_up_needed'
-                  ).length
-                }
-              </strong>
-            </article>
+              <article className="stat-card">
+                <span>Overdue Follow Ups</span>
+                <strong>{filteredBookings.filter((b) => b.status === 'follow_up_needed').length}</strong>
+              </article>
 
-            <article className="stat-card">
-              <span>Cars In Shop</span>
-              <strong>
-                {
-                  filteredBookings.filter(
-                    (b) => b.status === 'car_in_shop'
-                  ).length
-                }
-              </strong>
-            </article>
+              <article className="stat-card">
+                <span>Cars In Shop</span>
+                <strong>{filteredBookings.filter((b) => b.status === 'car_in_shop').length}</strong>
+              </article>
 
-            <article className="stat-card">
-              <span>Waiting On Parts</span>
-              <strong>
-                {
-                  filteredBookings.filter(
-                    (b) => b.status === 'waiting_on_parts'
-                  ).length
-                }
-              </strong>
-            </article>
+              <article className="stat-card">
+                <span>Waiting On Parts</span>
+                <strong>{filteredBookings.filter((b) => b.status === 'waiting_on_parts').length}</strong>
+              </article>
 
-            <article className="stat-card">
-              <span>Completed This Week</span>
-              <strong>
-                {
-                  filteredBookings.filter((b) => {
+              <article className="stat-card">
+                <span>Completed This Week</span>
+                <strong>
+                  {filteredBookings.filter((b) => {
                     if (b.status !== 'completed') return false
                     const d = new Date(b.appointment_date)
                     const weekAgo = new Date()
                     weekAgo.setDate(weekAgo.getDate() - 7)
                     return d >= weekAgo
-                  }).length
-                }
-              </strong>
-            </article>
+                  }).length}
+                </strong>
+              </article>
 
-            <article className="stat-card">
-              <span>This Week Appointments</span>
-              <strong>
-                {
-                  filteredBookings.filter((b) => {
+              <article className="stat-card">
+                <span>This Week Appointments</span>
+                <strong>
+                  {filteredBookings.filter((b) => {
                     const d = new Date(b.appointment_date)
                     const weekAgo = new Date()
                     weekAgo.setDate(weekAgo.getDate() - 7)
                     return d >= weekAgo
-                  }).length
-                }
-              </strong>
-            </article>
-          </section>
+                  }).length}
+                </strong>
+              </article>
+            </section>
 
             <AppointmentList bookings={filteredBookings} onSelect={setSelectedBooking} />
           </>
@@ -255,6 +282,77 @@ export default function App() {
 
         {activeTab === 'calendar' ? (
           <CalendarView bookings={filteredBookings} onSelect={setSelectedBooking} />
+        ) : null}
+
+        {activeTab === 'applications' ? (
+          <>
+            <section className="stats-grid">
+              <article className="stat-card">
+                <span>Total Applications</span>
+                <strong>{applications.length}</strong>
+              </article>
+
+              <article className="stat-card">
+                <span>New Applications</span>
+                <strong>{applications.filter((a) => a.status === 'new').length}</strong>
+              </article>
+
+              <article className="stat-card">
+                <span>Showing</span>
+                <strong>{filteredApplications.length}</strong>
+              </article>
+            </section>
+
+            <div className="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Applicant</th>
+                    <th>Job</th>
+                    <th>Contact</th>
+                    <th>Experience</th>
+                    <th>Start</th>
+                    <th>Message</th>
+                    <th>Submitted</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredApplications.length === 0 ? (
+                    <tr>
+                      <td className="empty-cell" colSpan="7">
+                        No applications found.
+                      </td>
+                    </tr>
+                  ) : (
+                    filteredApplications.map((app) => (
+                      <tr key={app.id}>
+                        <td>
+                          <div className="cell-title">{app.name || '—'}</div>
+                          <div className="cell-sub">
+                            <span className={`status-pill status-${app.status || 'new'}`}>
+                              {app.status || 'new'}
+                            </span>
+                          </div>
+                        </td>
+                        <td>
+                          <div className="cell-title">{app.job_type || '—'}</div>
+                          <div className="cell-sub">{app.certifications || 'No certifications listed'}</div>
+                        </td>
+                        <td>
+                          <div className="cell-title">{app.phone || '—'}</div>
+                          <div className="cell-sub">{app.email || '—'}</div>
+                        </td>
+                        <td>{app.experience || '—'}</td>
+                        <td>{app.start_date || '—'}</td>
+                        <td>{app.message || '—'}</td>
+                        <td>{formatDate(app.created_at)}</td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </>
         ) : null}
 
         {activeTab === 'leads' ? (
@@ -273,6 +371,7 @@ export default function App() {
         onClose={() => setSelectedBooking(null)}
         onSaved={loadBookings}
       />
+
       <NewAppointmentModal
         open={showNewModal}
         onClose={() => setShowNewModal(false)}
