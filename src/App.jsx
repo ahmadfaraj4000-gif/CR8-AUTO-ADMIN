@@ -22,6 +22,7 @@ export default function App() {
   const [bookings, setBookings] = useState([])
   const [applications, setApplications] = useState([])
   const [selectedBooking, setSelectedBooking] = useState(null)
+  const [selectedApplication, setSelectedApplication] = useState(null)
   const [activeTab, setActiveTab] = useState('appointments')
   const [search, setSearch] = useState('')
   const [error, setError] = useState('')
@@ -325,7 +326,11 @@ export default function App() {
                     </tr>
                   ) : (
                     filteredApplications.map((app) => (
-                      <tr key={app.id}>
+                      <tr
+                        key={app.id}
+                        onClick={() => setSelectedApplication(app)}
+                        style={{ cursor: 'pointer' }}
+                      >
                         <td>
                           <div className="cell-title">{app.name || '—'}</div>
                           <div className="cell-sub">
@@ -377,6 +382,78 @@ export default function App() {
         onClose={() => setShowNewModal(false)}
         onSaved={loadBookings}
       />
+      {selectedApplication ? (
+  <div
+    className="modal-backdrop"
+    onClick={() => setSelectedApplication(null)}
+  >
+    <div
+      className="modal-card"
+      onClick={(e) => e.stopPropagation()}
+    >
+      <div className="modal-header">
+        <div>
+          <p className="eyebrow">Job Application</p>
+          <h3>{selectedApplication.name}</h3>
+        </div>
+
+        <button
+          className="ghost-btn"
+          onClick={() => setSelectedApplication(null)}
+        >
+          Close
+        </button>
+      </div>
+
+      <div className="detail-grid">
+        <div>
+          <label>Name</label>
+          <strong>{selectedApplication.name || '—'}</strong>
+        </div>
+
+        <div>
+          <label>Phone</label>
+          <strong>{selectedApplication.phone || '—'}</strong>
+        </div>
+
+        <div>
+          <label>Email</label>
+          <strong>{selectedApplication.email || '—'}</strong>
+        </div>
+
+        <div>
+          <label>Job Type</label>
+          <strong>{selectedApplication.job_type || '—'}</strong>
+        </div>
+
+        <div>
+          <label>Experience</label>
+          <strong>{selectedApplication.experience || '—'}</strong>
+        </div>
+
+        <div>
+          <label>Certifications</label>
+          <strong>{selectedApplication.certifications || '—'}</strong>
+        </div>
+
+        <div>
+          <label>Start Date</label>
+          <strong>{selectedApplication.start_date || '—'}</strong>
+        </div>
+
+        <div>
+          <label>Submitted</label>
+          <strong>{formatDate(selectedApplication.created_at)}</strong>
+        </div>
+      </div>
+
+      <div className="placeholder-card">
+        <label>Applicant Message</label>
+        <p>{selectedApplication.message || 'No message provided.'}</p>
+      </div>
+    </div>
+  </div>
+) : null}
     </div>
   )
 }
