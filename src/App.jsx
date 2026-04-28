@@ -15,6 +15,41 @@ function formatDate(value) {
   return new Date(value).toLocaleString()
 }
 
+function todayISO() {
+  return new Date().toISOString().split('T')[0]
+}
+
+function isThisWeek(dateValue) {
+  if (!dateValue) return false
+
+  const d = new Date(`${dateValue}T00:00:00`)
+  const now = new Date()
+
+  const start = new Date(now)
+  start.setDate(now.getDate() - now.getDay())
+  start.setHours(0, 0, 0, 0)
+
+  const end = new Date(start)
+  end.setDate(start.getDate() + 7)
+
+  return d >= start && d < end
+}
+
+function getDaysInShop(dropoffDate, pickupDate) {
+  if (!dropoffDate) return null
+
+  const start = new Date(`${dropoffDate}T00:00:00`)
+  const end = pickupDate
+    ? new Date(`${pickupDate}T00:00:00`)
+    : new Date()
+
+  start.setHours(0, 0, 0, 0)
+  end.setHours(0, 0, 0, 0)
+
+  const diff = end - start
+  return Math.max(0, Math.floor(diff / 86400000))
+}
+
 export default function App() {
   const [session, setSession] = useState(null)
   const [profile, setProfile] = useState(null)
@@ -24,6 +59,7 @@ export default function App() {
   const [selectedBooking, setSelectedBooking] = useState(null)
   const [selectedApplication, setSelectedApplication] = useState(null)
   const [activeTab, setActiveTab] = useState('appointments')
+  const [appointmentView, setAppointmentView] = useState('today')
   const [search, setSearch] = useState('')
   const [error, setError] = useState('')
   const [showNewModal, setShowNewModal] = useState(false)
@@ -77,7 +113,6 @@ export default function App() {
     const { data, error } = await supabase
       .from('bookings')
       .select('*')
-      .neq('status', 'archived')
       .order('appointment_date', { ascending: true })
       .order('appointment_time', { ascending: true })
 
@@ -103,15 +138,128 @@ export default function App() {
     setApplications(data || [])
   }
 
+  async function updateBookingStatus(id, status) {
+    const updates = { status }
+
+    if (status === 'car_in_shop') {
+      updates.dropoff_date = todayISO()
+      updates.pickup_date = null
+    }
+
+    if (status === 'completed') {
+      updates.pickup_date = todayISO()
+    }
+
+    const { error } = await supabase
+      .from('bookings')
+      .update(updates)
+      .eq('id', id)
+
+    if (error) {
+      setError(error.message)
+      return
+    }
+
+    await loadBookings()
+  }
+
+  async function markDroppedOff(id) {
+    const { error } = await supabase
+      .from('bookings')
+      .update({
+        dropoff_date: todayISO(),
+        pickup_date: null,
+        status: 'car_in_shop'
+      })
+      .eq('id', id)
+
+    if (error) {
+      setError(error.message)
+      return
+    }
+
+    await loadBookings()
+  }
+
+  async function markPickedUp(id) {
+    const { error } = await supabase
+      .from('bookings')
+      .update({
+        pickup_date: todayISO(),
+        status: 'completed'
+      })
+      .eq('id', id)
+
+    if (error) {
+      setError(error.message)
+      return
+    }
+
+    await loadBookings()
+  }
+
   async function signOut() {
     await supabase.auth.signOut()
   }
 
+  const activeBookings = useMemo(
+    () => bookings.filter((b) => b.status !== 'archived'),
+    [bookings]
+  )
+
   const filteredBookings = useMemo(() => {
     const term = search.trim().toLowerCase()
-    if (!term) return bookings
+    let rows = bookings
 
-    return bookings.filter((booking) =>
+    if (appointmentView === 'today') {
+      rows = activeBookings.filter((b) => b.appointment_date === todayISO())
+    }
+
+    if (appointmentView === 'upcoming') {
+      rows = activeBookings.filter((b) => b.appointment_date >= todayISO())
+    }
+
+    if (appointmentView === 'this_week') {
+      rows = activeBookings.filter((b) => isThisWeek(b.appointment_date))
+    }
+
+    if (appointmentView === 'in_shop') {
+      rows = activeBookings.filter((b) => b.status === 'car_in_shop')
+    }
+
+    if (appointmentView === 'three_plus') {
+      rows = activeBookings.filter((b) => {
+        const days = getDaysInShop(b.dropoff_date, b.pickup_date)
+        return days !== null && days >= 3 && !b.pickup_date
+      })
+    }
+
+    if (appointmentView === 'seven_plus') {
+      rows = activeBookings.filter((b) => {
+        const days = getDaysInShop(b.dropoff_date, b.pickup_date)
+        return days !== null && days >= 7 && !b.pickup_date
+      })
+    }
+
+    if (appointmentView === 'waiting') {
+      rows = activeBookings.filter((b) => b.status === 'waiting_on_parts')
+    }
+
+    if (appointmentView === 'followups') {
+      rows = activeBookings.filter((b) => b.status === 'follow_up_needed')
+    }
+
+    if (appointmentView === 'completed') {
+      rows = activeBookings.filter((b) => b.status === 'completed')
+    }
+
+    if (appointmentView === 'archived') {
+      rows = bookings.filter((b) => b.status === 'archived')
+    }
+
+    if (!term) return rows
+
+    return rows.filter((booking) =>
       [
         booking.name,
         booking.phone,
@@ -119,6 +267,8 @@ export default function App() {
         booking.service,
         booking.appointment_date,
         booking.appointment_time,
+        booking.dropoff_date,
+        booking.pickup_date,
         booking.status
       ]
         .filter(Boolean)
@@ -126,7 +276,7 @@ export default function App() {
         .toLowerCase()
         .includes(term)
     )
-  }, [bookings, search])
+  }, [bookings, activeBookings, appointmentView, search])
 
   const filteredApplications = useMemo(() => {
     const term = search.trim().toLowerCase()
@@ -151,6 +301,23 @@ export default function App() {
     )
   }, [applications, search])
 
+  const stats = useMemo(() => {
+    return {
+      today: activeBookings.filter((b) => b.appointment_date === todayISO()).length,
+      inShop: activeBookings.filter((b) => b.status === 'car_in_shop').length,
+      waiting: activeBookings.filter((b) => b.status === 'waiting_on_parts').length,
+      followups: activeBookings.filter((b) => b.status === 'follow_up_needed').length,
+      threePlus: activeBookings.filter((b) => {
+        const days = getDaysInShop(b.dropoff_date, b.pickup_date)
+        return days !== null && days >= 3 && !b.pickup_date
+      }).length,
+      sevenPlus: activeBookings.filter((b) => {
+        const days = getDaysInShop(b.dropoff_date, b.pickup_date)
+        return days !== null && days >= 7 && !b.pickup_date
+      }).length
+    }
+  }, [activeBookings])
+
   if (loading) {
     return <div className="loading-screen">Loading CR8 Admin Portal...</div>
   }
@@ -164,8 +331,8 @@ export default function App() {
       <aside className="sidebar">
         <div>
           <p className="eyebrow">CR8 AUTOS</p>
-          <h2>Operations</h2>
-          <p className="muted">Official internal portal</p>
+          <h2>Shop Command</h2>
+          <p className="muted">Owner operations dashboard</p>
         </div>
 
         <nav className="side-nav">
@@ -196,10 +363,10 @@ export default function App() {
           <div>
             <p className="eyebrow">Dashboard</p>
             <h1>
-              {activeTab === 'appointments' && 'Appointments'}
+              {activeTab === 'appointments' && 'Shop Command Center'}
               {activeTab === 'calendar' && 'Calendar'}
               {activeTab === 'applications' && 'Applications'}
-              {activeTab === 'leads' && 'Lead pipeline'}
+              {activeTab === 'leads' && 'Lead Pipeline'}
             </h1>
           </div>
 
@@ -209,17 +376,14 @@ export default function App() {
               placeholder={
                 activeTab === 'applications'
                   ? 'Search applications...'
-                  : 'Search appointments...'
+                  : 'Search customer, vehicle, phone, status...'
               }
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
 
             {activeTab !== 'applications' ? (
-              <button
-                className="primary-btn"
-                onClick={() => setShowNewModal(true)}
-              >
+              <button className="primary-btn" onClick={() => setShowNewModal(true)}>
                 + New Appointment
               </button>
             ) : null}
@@ -231,58 +395,82 @@ export default function App() {
         {activeTab === 'appointments' ? (
           <>
             <section className="stats-grid stats-grid-owner">
-              <article className="stat-card">
-                <span>Today Appointments</span>
-                <strong>{filteredBookings.filter((b) => b.appointment_date === new Date().toISOString().split('T')[0]).length}</strong>
+              <article className="stat-card urgent">
+                <span>Today</span>
+                <strong>{stats.today}</strong>
               </article>
 
-              <article className="stat-card">
-                <span>Overdue Follow Ups</span>
-                <strong>{filteredBookings.filter((b) => b.status === 'follow_up_needed').length}</strong>
-              </article>
-
-              <article className="stat-card">
+              <article className="stat-card blue">
                 <span>Cars In Shop</span>
-                <strong>{filteredBookings.filter((b) => b.status === 'car_in_shop').length}</strong>
+                <strong>{stats.inShop}</strong>
               </article>
 
-              <article className="stat-card">
-                <span>Waiting On Parts</span>
-                <strong>{filteredBookings.filter((b) => b.status === 'waiting_on_parts').length}</strong>
+              <article className="stat-card warning">
+                <span>Waiting Parts</span>
+                <strong>{stats.waiting}</strong>
               </article>
 
-              <article className="stat-card">
-                <span>Completed This Week</span>
-                <strong>
-                  {filteredBookings.filter((b) => {
-                    if (b.status !== 'completed') return false
-                    const d = new Date(b.appointment_date)
-                    const weekAgo = new Date()
-                    weekAgo.setDate(weekAgo.getDate() - 7)
-                    return d >= weekAgo
-                  }).length}
-                </strong>
+              <article className="stat-card danger">
+                <span>Follow Ups</span>
+                <strong>{stats.followups}</strong>
               </article>
 
-              <article className="stat-card">
-                <span>This Week Appointments</span>
-                <strong>
-                  {filteredBookings.filter((b) => {
-                    const d = new Date(b.appointment_date)
-                    const weekAgo = new Date()
-                    weekAgo.setDate(weekAgo.getDate() - 7)
-                    return d >= weekAgo
-                  }).length}
-                </strong>
+              <article className="stat-card warning">
+                <span>3+ Days</span>
+                <strong>{stats.threePlus}</strong>
+              </article>
+
+              <article className="stat-card danger">
+                <span>7+ Days</span>
+                <strong>{stats.sevenPlus}</strong>
               </article>
             </section>
 
-            <AppointmentList bookings={filteredBookings} onSelect={setSelectedBooking} />
+            <section className="view-tabs">
+              <button className={appointmentView === 'today' ? 'active' : ''} onClick={() => setAppointmentView('today')}>
+                Today
+              </button>
+              <button className={appointmentView === 'upcoming' ? 'active' : ''} onClick={() => setAppointmentView('upcoming')}>
+                Upcoming
+              </button>
+              <button className={appointmentView === 'this_week' ? 'active' : ''} onClick={() => setAppointmentView('this_week')}>
+                This Week
+              </button>
+              <button className={appointmentView === 'in_shop' ? 'active' : ''} onClick={() => setAppointmentView('in_shop')}>
+                In Shop
+              </button>
+              <button className={appointmentView === 'three_plus' ? 'active' : ''} onClick={() => setAppointmentView('three_plus')}>
+                3+ Days
+              </button>
+              <button className={appointmentView === 'seven_plus' ? 'active' : ''} onClick={() => setAppointmentView('seven_plus')}>
+                7+ Days
+              </button>
+              <button className={appointmentView === 'waiting' ? 'active' : ''} onClick={() => setAppointmentView('waiting')}>
+                Waiting Parts
+              </button>
+              <button className={appointmentView === 'followups' ? 'active' : ''} onClick={() => setAppointmentView('followups')}>
+                Follow Ups
+              </button>
+              <button className={appointmentView === 'completed' ? 'active' : ''} onClick={() => setAppointmentView('completed')}>
+                Completed
+              </button>
+              <button className={appointmentView === 'archived' ? 'active' : ''} onClick={() => setAppointmentView('archived')}>
+                Archived
+              </button>
+            </section>
+
+            <AppointmentList
+              bookings={filteredBookings}
+              onSelect={setSelectedBooking}
+              onStatusChange={updateBookingStatus}
+              onDroppedOff={markDroppedOff}
+              onPickedUp={markPickedUp}
+            />
           </>
         ) : null}
 
         {activeTab === 'calendar' ? (
-          <CalendarView bookings={filteredBookings} onSelect={setSelectedBooking} />
+          <CalendarView bookings={activeBookings} onSelect={setSelectedBooking} />
         ) : null}
 
         {activeTab === 'applications' ? (
@@ -364,8 +552,7 @@ export default function App() {
           <div className="placeholder-card">
             <h3>Leads module ready for next phase</h3>
             <p>
-              The SQL in this starter already creates a <code>leads</code> table for repair leads,
-              buy/sell leads, and salesman assignments. Next step is wiring this tab to the same UI pattern.
+              Next step is wiring repair leads, buy/sell leads, and customer follow-up into this same command center layout.
             </p>
           </div>
         ) : null}
@@ -382,78 +569,70 @@ export default function App() {
         onClose={() => setShowNewModal(false)}
         onSaved={loadBookings}
       />
+
       {selectedApplication ? (
-  <div
-    className="modal-backdrop"
-    onClick={() => setSelectedApplication(null)}
-  >
-    <div
-      className="modal-card"
-      onClick={(e) => e.stopPropagation()}
-    >
-      <div className="modal-header">
-        <div>
-          <p className="eyebrow">Job Application</p>
-          <h3>{selectedApplication.name}</h3>
+        <div className="modal-backdrop" onClick={() => setSelectedApplication(null)}>
+          <div className="modal-card" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <div>
+                <p className="eyebrow">Job Application</p>
+                <h3>{selectedApplication.name}</h3>
+              </div>
+
+              <button className="ghost-btn" onClick={() => setSelectedApplication(null)}>
+                Close
+              </button>
+            </div>
+
+            <div className="detail-grid">
+              <div>
+                <label>Name</label>
+                <strong>{selectedApplication.name || '—'}</strong>
+              </div>
+
+              <div>
+                <label>Phone</label>
+                <strong>{selectedApplication.phone || '—'}</strong>
+              </div>
+
+              <div>
+                <label>Email</label>
+                <strong>{selectedApplication.email || '—'}</strong>
+              </div>
+
+              <div>
+                <label>Job Type</label>
+                <strong>{selectedApplication.job_type || '—'}</strong>
+              </div>
+
+              <div>
+                <label>Experience</label>
+                <strong>{selectedApplication.experience || '—'}</strong>
+              </div>
+
+              <div>
+                <label>Certifications</label>
+                <strong>{selectedApplication.certifications || '—'}</strong>
+              </div>
+
+              <div>
+                <label>Start Date</label>
+                <strong>{selectedApplication.start_date || '—'}</strong>
+              </div>
+
+              <div>
+                <label>Submitted</label>
+                <strong>{formatDate(selectedApplication.created_at)}</strong>
+              </div>
+            </div>
+
+            <div className="placeholder-card">
+              <label>Applicant Message</label>
+              <p>{selectedApplication.message || 'No message provided.'}</p>
+            </div>
+          </div>
         </div>
-
-        <button
-          className="ghost-btn"
-          onClick={() => setSelectedApplication(null)}
-        >
-          Close
-        </button>
-      </div>
-
-      <div className="detail-grid">
-        <div>
-          <label>Name</label>
-          <strong>{selectedApplication.name || '—'}</strong>
-        </div>
-
-        <div>
-          <label>Phone</label>
-          <strong>{selectedApplication.phone || '—'}</strong>
-        </div>
-
-        <div>
-          <label>Email</label>
-          <strong>{selectedApplication.email || '—'}</strong>
-        </div>
-
-        <div>
-          <label>Job Type</label>
-          <strong>{selectedApplication.job_type || '—'}</strong>
-        </div>
-
-        <div>
-          <label>Experience</label>
-          <strong>{selectedApplication.experience || '—'}</strong>
-        </div>
-
-        <div>
-          <label>Certifications</label>
-          <strong>{selectedApplication.certifications || '—'}</strong>
-        </div>
-
-        <div>
-          <label>Start Date</label>
-          <strong>{selectedApplication.start_date || '—'}</strong>
-        </div>
-
-        <div>
-          <label>Submitted</label>
-          <strong>{formatDate(selectedApplication.created_at)}</strong>
-        </div>
-      </div>
-
-      <div className="placeholder-card">
-        <label>Applicant Message</label>
-        <p>{selectedApplication.message || 'No message provided.'}</p>
-      </div>
-    </div>
-  </div>
-) : null}
+      ) : null}
     </div>
   )
 }
