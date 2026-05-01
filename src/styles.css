@@ -94,8 +94,14 @@ button {
   padding: 24px;
   display: flex;
   flex-direction: column;
-  justify-content: space-between;
   gap: 24px;
+  min-height: 100vh;
+  position: sticky;
+  top: 0;
+  align-self: start;
+}
+.profile-box {
+  margin-top: auto;
 }
 .side-nav {
   display: grid;
@@ -757,4 +763,51 @@ code {
     width: 100%;
     justify-content: flex-start;
   }
+}
+/* ===== LOCK DASHBOARD FILTER BUTTON LAYOUT ===== */
+.view-tabs {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 24px 0 22px;
+  min-height: 58px;
+}
+
+/* ===== LOCK DASHBOARD FILTER BUTTON LAYOUT ===== */
+.view-tabs {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+  margin: 24px 0 22px;
+  max-width: 760px;
+}
+
+.view-tabs button,
+.view-tabs button.active {
+  height: 46px;
+  width: 100%;
+  padding: 0 16px;
+  border-radius: 999px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  white-space: nowrap;
+  line-height: 1;
+}
+.header-btn {
+  width: 320px; /* SAME as search bar */
+  height: 46px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.header-actions {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.search-input {
+  width: 320px;
+  height: 46px;
 }

@@ -59,7 +59,7 @@ export default function App() {
   const [selectedBooking, setSelectedBooking] = useState(null)
   const [selectedApplication, setSelectedApplication] = useState(null)
   const [activeTab, setActiveTab] = useState('appointments')
-  const [appointmentView, setAppointmentView] = useState('today')
+  const [appointmentView, setAppointmentView] = useState('new_requests')
   const [search, setSearch] = useState('')
   const [error, setError] = useState('')
   const [showNewModal, setShowNewModal] = useState(false)
@@ -209,52 +209,33 @@ export default function App() {
 
   const filteredBookings = useMemo(() => {
     const term = search.trim().toLowerCase()
-    let rows = bookings
+    let rows = activeBookings
 
-    if (appointmentView === 'today') {
-      rows = activeBookings.filter((b) => b.appointment_date === todayISO())
-    }
-
-    if (appointmentView === 'upcoming') {
-      rows = activeBookings.filter((b) => b.appointment_date >= todayISO())
-    }
-
-    if (appointmentView === 'this_week') {
-      rows = activeBookings.filter((b) => isThisWeek(b.appointment_date))
+    if (appointmentView === 'new_requests') {
+      rows = activeBookings.filter((b) =>
+        ['new', 'contacted', 'confirmed'].includes(b.status || 'new')
+      )
     }
 
     if (appointmentView === 'in_shop') {
       rows = activeBookings.filter((b) => b.status === 'car_in_shop')
     }
 
-    if (appointmentView === 'three_plus') {
+    if (appointmentView === 'needs_attention') {
       rows = activeBookings.filter((b) => {
         const days = getDaysInShop(b.dropoff_date, b.pickup_date)
-        return days !== null && days >= 3 && !b.pickup_date
+        return (
+          b.status === 'waiting_on_parts' ||
+          b.status === 'follow_up_needed' ||
+          (days !== null && days >= 3 && !b.pickup_date)
+        )
       })
     }
 
-    if (appointmentView === 'seven_plus') {
-      rows = activeBookings.filter((b) => {
-        const days = getDaysInShop(b.dropoff_date, b.pickup_date)
-        return days !== null && days >= 7 && !b.pickup_date
-      })
-    }
-
-    if (appointmentView === 'waiting') {
-      rows = activeBookings.filter((b) => b.status === 'waiting_on_parts')
-    }
-
-    if (appointmentView === 'followups') {
-      rows = activeBookings.filter((b) => b.status === 'follow_up_needed')
-    }
-
-    if (appointmentView === 'completed') {
-      rows = activeBookings.filter((b) => b.status === 'completed')
-    }
-
-    if (appointmentView === 'archived') {
-      rows = bookings.filter((b) => b.status === 'archived')
+    if (appointmentView === 'completed_archived') {
+      rows = bookings.filter((b) =>
+        b.status === 'completed' || b.status === 'archived'
+      )
     }
 
     if (!term) return rows
@@ -303,20 +284,23 @@ export default function App() {
 
   const stats = useMemo(() => {
     return {
-      today: activeBookings.filter((b) => b.appointment_date === todayISO()).length,
+      newRequests: activeBookings.filter((b) =>
+        ['new', 'contacted', 'confirmed'].includes(b.status || 'new')
+      ).length,
       inShop: activeBookings.filter((b) => b.status === 'car_in_shop').length,
-      waiting: activeBookings.filter((b) => b.status === 'waiting_on_parts').length,
-      followups: activeBookings.filter((b) => b.status === 'follow_up_needed').length,
-      threePlus: activeBookings.filter((b) => {
+      needsAttention: activeBookings.filter((b) => {
         const days = getDaysInShop(b.dropoff_date, b.pickup_date)
-        return days !== null && days >= 3 && !b.pickup_date
+        return (
+          b.status === 'waiting_on_parts' ||
+          b.status === 'follow_up_needed' ||
+          (days !== null && days >= 3 && !b.pickup_date)
+        )
       }).length,
-      sevenPlus: activeBookings.filter((b) => {
-        const days = getDaysInShop(b.dropoff_date, b.pickup_date)
-        return days !== null && days >= 7 && !b.pickup_date
-      }).length
+      completedThisWeek: bookings.filter((b) =>
+        b.status === 'completed' && isThisWeek(b.pickup_date || b.appointment_date)
+      ).length
     }
-  }, [activeBookings])
+  }, [bookings, activeBookings])
 
   if (loading) {
     return <div className="loading-screen">Loading CR8 Admin Portal...</div>
@@ -383,7 +367,7 @@ export default function App() {
             />
 
             {activeTab !== 'applications' ? (
-              <button className="primary-btn" onClick={() => setShowNewModal(true)}>
+              <button className="primary-btn header-btn" onClick={() => setShowNewModal(true)}>
                 + New Appointment
               </button>
             ) : null}
@@ -396,8 +380,8 @@ export default function App() {
           <>
             <section className="stats-grid stats-grid-owner">
               <article className="stat-card urgent">
-                <span>Today</span>
-                <strong>{stats.today}</strong>
+                <span>New Requests</span>
+                <strong>{stats.newRequests}</strong>
               </article>
 
               <article className="stat-card blue">
@@ -406,56 +390,28 @@ export default function App() {
               </article>
 
               <article className="stat-card warning">
-                <span>Waiting Parts</span>
-                <strong>{stats.waiting}</strong>
+                <span>Needs Attention</span>
+                <strong>{stats.needsAttention}</strong>
               </article>
 
-              <article className="stat-card danger">
-                <span>Follow Ups</span>
-                <strong>{stats.followups}</strong>
-              </article>
-
-              <article className="stat-card warning">
-                <span>3+ Days</span>
-                <strong>{stats.threePlus}</strong>
-              </article>
-
-              <article className="stat-card danger">
-                <span>7+ Days</span>
-                <strong>{stats.sevenPlus}</strong>
+              <article className="stat-card success">
+                <span>Completed This Week</span>
+                <strong>{stats.completedThisWeek}</strong>
               </article>
             </section>
 
             <section className="view-tabs">
-              <button className={appointmentView === 'today' ? 'active' : ''} onClick={() => setAppointmentView('today')}>
-                Today
-              </button>
-              <button className={appointmentView === 'upcoming' ? 'active' : ''} onClick={() => setAppointmentView('upcoming')}>
-                Upcoming
-              </button>
-              <button className={appointmentView === 'this_week' ? 'active' : ''} onClick={() => setAppointmentView('this_week')}>
-                This Week
+              <button className={appointmentView === 'new_requests' ? 'active' : ''} onClick={() => setAppointmentView('new_requests')}>
+                New Requests
               </button>
               <button className={appointmentView === 'in_shop' ? 'active' : ''} onClick={() => setAppointmentView('in_shop')}>
                 In Shop
               </button>
-              <button className={appointmentView === 'three_plus' ? 'active' : ''} onClick={() => setAppointmentView('three_plus')}>
-                3+ Days
+              <button className={appointmentView === 'needs_attention' ? 'active' : ''} onClick={() => setAppointmentView('needs_attention')}>
+                Waiting / Follow Up
               </button>
-              <button className={appointmentView === 'seven_plus' ? 'active' : ''} onClick={() => setAppointmentView('seven_plus')}>
-                7+ Days
-              </button>
-              <button className={appointmentView === 'waiting' ? 'active' : ''} onClick={() => setAppointmentView('waiting')}>
-                Waiting Parts
-              </button>
-              <button className={appointmentView === 'followups' ? 'active' : ''} onClick={() => setAppointmentView('followups')}>
-                Follow Ups
-              </button>
-              <button className={appointmentView === 'completed' ? 'active' : ''} onClick={() => setAppointmentView('completed')}>
-                Completed
-              </button>
-              <button className={appointmentView === 'archived' ? 'active' : ''} onClick={() => setAppointmentView('archived')}>
-                Archived
+              <button className={appointmentView === 'completed_archived' ? 'active' : ''} onClick={() => setAppointmentView('completed_archived')}>
+                Completed / Archived
               </button>
             </section>
 
