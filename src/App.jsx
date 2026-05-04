@@ -5,6 +5,7 @@ import AppointmentList from './components/AppointmentList'
 import CalendarView from './components/CalendarView'
 import AppointmentModal from './components/AppointmentModal'
 import NewAppointmentModal from './components/NewAppointmentModal'
+import InvoiceGenerator from './components/InvoiceGenerator'
 
 function formatRole(role) {
   return (role || 'viewer').replaceAll('_', ' ')
@@ -329,6 +330,9 @@ export default function App() {
           <button className={activeTab === 'applications' ? 'active' : ''} onClick={() => setActiveTab('applications')}>
             Applications
           </button>
+          <button className={activeTab === 'invoices' ? 'active' : ''} onClick={() => setActiveTab('invoices')}>
+            Invoices
+          </button>
           <button className={activeTab === 'leads' ? 'active' : ''} onClick={() => setActiveTab('leads')}>
             Leads
           </button>
@@ -350,28 +354,31 @@ export default function App() {
               {activeTab === 'appointments' && 'Shop Command Center'}
               {activeTab === 'calendar' && 'Calendar'}
               {activeTab === 'applications' && 'Applications'}
+              {activeTab === 'invoices' && 'Invoices'}
               {activeTab === 'leads' && 'Lead Pipeline'}
             </h1>
           </div>
 
-          <div className="header-actions">
-            <input
-              className="search-input"
-              placeholder={
-                activeTab === 'applications'
-                  ? 'Search applications...'
-                  : 'Search customer, vehicle, phone, status...'
-              }
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
+          {activeTab !== 'invoices' ? (
+            <div className="header-actions">
+              <input
+                className="search-input"
+                placeholder={
+                  activeTab === 'applications'
+                    ? 'Search applications...'
+                    : 'Search customer, vehicle, phone, status...'
+                }
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+              />
 
-            {activeTab !== 'applications' ? (
-              <button className="primary-btn header-btn" onClick={() => setShowNewModal(true)}>
-                + New Appointment
-              </button>
-            ) : null}
-          </div>
+              {['appointments', 'calendar'].includes(activeTab) ? (
+                <button className="primary-btn header-btn" onClick={() => setShowNewModal(true)}>
+                  + New Appointment
+                </button>
+              ) : null}
+            </div>
+          ) : null}
         </header>
 
         {error ? <div className="error-box">{error}</div> : null}
@@ -502,6 +509,10 @@ export default function App() {
               </table>
             </div>
           </>
+        ) : null}
+
+        {activeTab === 'invoices' ? (
+          <InvoiceGenerator />
         ) : null}
 
         {activeTab === 'leads' ? (
