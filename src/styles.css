@@ -674,6 +674,19 @@ code {
   cursor: pointer;
 }
 
+.delete-btn {
+  border: 1px solid rgba(239, 68, 68, 0.45) !important;
+  background: rgba(127, 29, 29, 0.92) !important;
+  color: #fee2e2 !important;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.delete-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
 .urgency-pill {
   padding: 5px 9px;
   border-radius: 999px;
@@ -1896,4 +1909,194 @@ code {
   .invoice-bottom-grid {
     grid-template-columns: 1fr;
   }
+}
+
+/* ===== ESTIMATE LEADS ===== */
+.estimate-leads-module {
+  display: grid;
+  gap: 18px;
+}
+
+.estimate-ai-panel {
+  display: grid;
+  gap: 12px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  padding: 16px;
+}
+
+.estimate-ai-panel h4 {
+  margin: 4px 0 0;
+}
+
+.estimate-card-photos {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 12px;
+}
+
+.estimate-card-photo {
+  width: 74px;
+  height: 56px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+  padding: 0;
+  background: #111111;
+  cursor: pointer;
+}
+
+.estimate-card-photo img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
+}
+
+.estimate-card-photo.more {
+  display: grid;
+  place-items: center;
+  color: var(--text);
+  font-weight: 800;
+  font-size: 0.9rem;
+}
+
+.estimate-photo-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 12px;
+}
+
+.estimate-photo-grid a {
+  display: block;
+  overflow: hidden;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  background: #111111;
+}
+
+.estimate-photo-grid img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+}
+
+.estimate-breakdown-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px;
+  color: var(--muted);
+  font-size: 0.92rem;
+}
+
+.estimate-breakdown-grid strong {
+  color: var(--text);
+}
+
+.estimate-factor-list {
+  display: grid;
+  gap: 8px;
+}
+
+.estimate-factor-list strong {
+  color: var(--text);
+}
+
+.estimate-factor-list span {
+  display: block;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: #0e0e0e;
+  color: var(--muted);
+  padding: 10px 12px;
+}
+
+.estimate-factor-list.warning span {
+  border-color: rgba(245, 158, 11, 0.28);
+  background: rgba(245, 158, 11, 0.08);
+}
+/* ===== ESTIMATE LEADS V2 ===== */
+.estimate-leads-module {
+  display: grid;
+  gap: 18px;
+}
+
+.estimate-ai-panel {
+  display: grid;
+  gap: 12px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  padding: 16px;
+}
+
+.estimate-ai-panel h4 {
+  margin: 4px 0 0;
+}
+
+.estimate-ai-panel select,
+.estimate-ai-panel textarea {
+  width: 100%;
+  background: #0e0e0e;
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 12px;
+  padding: 12px 14px;
+}
+
+.estimate-card-photos {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 12px;
+}
+
+.estimate-card-photo {
+  width: 74px;
+  height: 56px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+  padding: 0;
+  background: #111111;
+  cursor: pointer;
+}
+
+.estimate-card-photo img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
+}
+
+.estimate-card-photo.more {
+  display: grid;
+  place-items: center;
+  color: var(--text);
+  font-weight: 800;
+  font-size: 0.9rem;
+}
+
+.estimate-photo-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 12px;
+}
+
+.estimate-photo-grid a {
+  display: block;
+  overflow: hidden;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  background: #111111;
+}
+
+.estimate-photo-grid img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
 }

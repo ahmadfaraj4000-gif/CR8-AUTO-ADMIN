@@ -6,6 +6,7 @@ import CalendarView from './components/CalendarView'
 import AppointmentModal from './components/AppointmentModal'
 import NewAppointmentModal from './components/NewAppointmentModal'
 import InvoiceGenerator from './components/InvoiceGenerator'
+import EstimateLeads from './components/EstimateLeads'
 
 function formatRole(role) {
   return (role || 'viewer').replaceAll('_', ' ')
@@ -57,6 +58,7 @@ export default function App() {
   const [loading, setLoading] = useState(true)
   const [bookings, setBookings] = useState([])
   const [applications, setApplications] = useState([])
+  const [estimateLeads, setEstimateLeads] = useState([])
   const [selectedBooking, setSelectedBooking] = useState(null)
   const [selectedApplication, setSelectedApplication] = useState(null)
   const [activeTab, setActiveTab] = useState('appointments')
@@ -85,6 +87,7 @@ export default function App() {
         setProfile(null)
         setBookings([])
         setApplications([])
+        setEstimateLeads([])
         setLoading(false)
         return
       }
@@ -103,7 +106,7 @@ export default function App() {
         setProfile(profileData)
       }
 
-      await Promise.all([loadBookings(), loadApplications()])
+      await Promise.all([loadBookings(), loadApplications(), loadEstimateLeads()])
       setLoading(false)
     }
 
@@ -137,6 +140,27 @@ export default function App() {
     }
 
     setApplications(data || [])
+  }
+
+
+  async function loadEstimateLeads() {
+    const { data, error } = await supabase
+      .from('estimate_leads')
+      .select('*')
+      .order('created_at', { ascending: false })
+
+    if (error) {
+      setError(error.message)
+      return
+    }
+
+    setEstimateLeads(data || [])
+  }
+
+  async function handleEstimateConverted() {
+    await Promise.all([loadBookings(), loadEstimateLeads()])
+    setActiveTab('appointments')
+    setAppointmentView('new_requests')
   }
 
   async function updateBookingStatus(id, status) {
@@ -283,6 +307,33 @@ export default function App() {
     )
   }, [applications, search])
 
+
+  const filteredEstimateLeads = useMemo(() => {
+    const term = search.trim().toLowerCase()
+    if (!term) return estimateLeads
+
+    return estimateLeads.filter((lead) =>
+      [
+        lead.name,
+        lead.phone,
+        lead.email,
+        lead.zip,
+        lead.vehicle,
+        lead.insurance_type,
+        lead.damage_area,
+        lead.damage_type,
+        lead.severity,
+        lead.description,
+        lead.estimate_range,
+        lead.status
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase()
+        .includes(term)
+    )
+  }, [estimateLeads, search])
+
   const stats = useMemo(() => {
     return {
       newRequests: activeBookings.filter((b) =>
@@ -334,7 +385,7 @@ export default function App() {
             Invoices
           </button>
           <button className={activeTab === 'leads' ? 'active' : ''} onClick={() => setActiveTab('leads')}>
-            Leads
+            Estimate Leads
           </button>
         </nav>
 
@@ -355,7 +406,7 @@ export default function App() {
               {activeTab === 'calendar' && 'Calendar'}
               {activeTab === 'applications' && 'Applications'}
               {activeTab === 'invoices' && 'Invoices'}
-              {activeTab === 'leads' && 'Lead Pipeline'}
+              {activeTab === 'leads' && 'Estimate Leads'}
             </h1>
           </div>
 
@@ -366,7 +417,9 @@ export default function App() {
                 placeholder={
                   activeTab === 'applications'
                     ? 'Search applications...'
-                    : 'Search customer, vehicle, phone, status...'
+                    : activeTab === 'leads'
+                      ? 'Search estimate leads...'
+                      : 'Search customer, vehicle, phone, status...'
                 }
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
@@ -516,12 +569,11 @@ export default function App() {
         ) : null}
 
         {activeTab === 'leads' ? (
-          <div className="placeholder-card">
-            <h3>Leads module ready for next phase</h3>
-            <p>
-              Next step is wiring repair leads, buy/sell leads, and customer follow-up into this same command center layout.
-            </p>
-          </div>
+          <EstimateLeads
+            leads={filteredEstimateLeads}
+            onSaved={loadEstimateLeads}
+            onConverted={handleEstimateConverted}
+          />
         ) : null}
       </main>
 
