@@ -7,6 +7,10 @@ import AppointmentModal from './components/AppointmentModal'
 import NewAppointmentModal from './components/NewAppointmentModal'
 import InvoiceGenerator from './components/InvoiceGenerator'
 import EstimateLeads from './components/EstimateLeads'
+import CustomerDatabase from './components/CustomerDatabase'
+
+const CUSTOMER_KEY = 'cr8CustomerDatabase'
+const DELETED_CUSTOMER_KEY = 'cr8DeletedCustomers'
 
 function formatRole(role) {
   return (role || 'viewer').replaceAll('_', ' ')
@@ -52,6 +56,69 @@ function getDaysInShop(dropoffDate, pickupDate) {
   return Math.max(0, Math.floor(diff / 86400000))
 }
 
+function loadSavedCustomers() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(CUSTOMER_KEY) || '[]')
+    return Array.isArray(saved) ? saved : []
+  } catch {
+    return []
+  }
+}
+
+function loadDeletedCustomerKeys() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(DELETED_CUSTOMER_KEY) || '[]')
+    return Array.isArray(saved) ? saved : []
+  } catch {
+    return []
+  }
+}
+
+function customerKey(customer) {
+  return [
+    customer.name,
+    customer.phone,
+    customer.email,
+    customer.vehicle,
+    customer.vin
+  ]
+    .filter(Boolean)
+    .join('|')
+    .toLowerCase()
+}
+
+function normalizeCustomer(customer) {
+  return {
+    id: customer.id || customerKey(customer) || crypto.randomUUID(),
+    name: customer.name || '',
+    phone: customer.phone || '',
+    email: customer.email || '',
+    address: customer.address || '',
+    vehicle: customer.vehicle || '',
+    vin: customer.vin || '',
+    mileage: customer.mileage || '',
+    plate: customer.plate || '',
+    source: customer.source || 'invoice',
+    updatedAt: customer.updatedAt || customer.created_at || new Date().toISOString()
+  }
+}
+
+function dedupeCustomers(customers) {
+  const seen = new Map()
+
+  customers.map(normalizeCustomer).forEach((customer) => {
+    const key = customerKey(customer)
+    if (!key) return
+
+    const existing = seen.get(key)
+    if (!existing || new Date(customer.updatedAt) > new Date(existing.updatedAt)) {
+      seen.set(key, customer)
+    }
+  })
+
+  return [...seen.values()].sort((a, b) => a.name.localeCompare(b.name))
+}
+
 export default function App() {
   const [session, setSession] = useState(null)
   const [profile, setProfile] = useState(null)
@@ -59,6 +126,8 @@ export default function App() {
   const [bookings, setBookings] = useState([])
   const [applications, setApplications] = useState([])
   const [estimateLeads, setEstimateLeads] = useState([])
+  const [savedCustomers, setSavedCustomers] = useState(loadSavedCustomers)
+  const [deletedCustomerKeys, setDeletedCustomerKeys] = useState(loadDeletedCustomerKeys)
   const [selectedBooking, setSelectedBooking] = useState(null)
   const [selectedApplication, setSelectedApplication] = useState(null)
   const [activeTab, setActiveTab] = useState('appointments')
@@ -227,6 +296,44 @@ export default function App() {
     await supabase.auth.signOut()
   }
 
+  function saveCustomer(customer) {
+    setSavedCustomers((current) => {
+      const normalized = normalizeCustomer({ ...customer, source: customer.source || 'invoice', updatedAt: new Date().toISOString() })
+      const next = dedupeCustomers([
+        normalized,
+        ...current
+      ])
+
+      localStorage.setItem(CUSTOMER_KEY, JSON.stringify(next))
+      setDeletedCustomerKeys((keys) => {
+        const nextKeys = keys.filter((key) => key !== customerKey(normalized))
+        localStorage.setItem(DELETED_CUSTOMER_KEY, JSON.stringify(nextKeys))
+        return nextKeys
+      })
+      return next
+    })
+  }
+
+  function deleteCustomer(customer) {
+    const key = customerKey(customer)
+    if (!key) return
+
+    const confirmed = window.confirm(`Delete ${customer.name || customer.phone || 'this customer'} from the customer database?`)
+    if (!confirmed) return
+
+    setSavedCustomers((current) => {
+      const next = current.filter((savedCustomer) => customerKey(savedCustomer) !== key)
+      localStorage.setItem(CUSTOMER_KEY, JSON.stringify(next))
+      return next
+    })
+
+    setDeletedCustomerKeys((current) => {
+      const next = Array.from(new Set([...current, key]))
+      localStorage.setItem(DELETED_CUSTOMER_KEY, JSON.stringify(next))
+      return next
+    })
+  }
+
   const activeBookings = useMemo(
     () => bookings.filter((b) => b.status !== 'archived'),
     [bookings]
@@ -334,6 +441,47 @@ export default function App() {
     )
   }, [estimateLeads, search])
 
+  const customers = useMemo(() => {
+    const bookingCustomers = bookings.map((booking) => ({
+      id: `booking-${booking.id}`,
+      name: booking.name || '',
+      phone: booking.phone || '',
+      email: booking.email || '',
+      vehicle: booking.vehicle || '',
+      source: 'appointment',
+      updatedAt: booking.updated_at || booking.created_at || booking.appointment_date
+    }))
+
+    const leadCustomers = estimateLeads.map((lead) => ({
+      id: `lead-${lead.id}`,
+      name: lead.name || '',
+      phone: lead.phone || '',
+      email: lead.email || '',
+      address: lead.zip ? `ZIP ${lead.zip}` : '',
+      vehicle: lead.vehicle || '',
+      vin: lead.vin || '',
+      source: 'estimate lead',
+      updatedAt: lead.updated_at || lead.created_at
+    }))
+
+    return dedupeCustomers([...savedCustomers, ...bookingCustomers, ...leadCustomers])
+      .filter((customer) => !deletedCustomerKeys.includes(customerKey(customer)))
+  }, [bookings, estimateLeads, savedCustomers, deletedCustomerKeys])
+
+  const filteredCustomers = useMemo(() => {
+    const term = search.trim().toLowerCase()
+    if (!term) return customers
+
+    return customers.filter((customer) => {
+      const searchable = [customer.name, customer.phone]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase()
+
+      return searchable.includes(term)
+    })
+  }, [customers, search])
+
   const stats = useMemo(() => {
     return {
       newRequests: activeBookings.filter((b) =>
@@ -384,6 +532,9 @@ export default function App() {
           <button className={activeTab === 'invoices' ? 'active' : ''} onClick={() => setActiveTab('invoices')}>
             Invoices
           </button>
+          <button className={activeTab === 'customers' ? 'active' : ''} onClick={() => setActiveTab('customers')}>
+            Customers
+          </button>
           <button className={activeTab === 'leads' ? 'active' : ''} onClick={() => setActiveTab('leads')}>
             Estimate Leads
           </button>
@@ -406,6 +557,7 @@ export default function App() {
               {activeTab === 'calendar' && 'Calendar'}
               {activeTab === 'applications' && 'Applications'}
               {activeTab === 'invoices' && 'Invoices'}
+              {activeTab === 'customers' && 'Customers'}
               {activeTab === 'leads' && 'Estimate Leads'}
             </h1>
           </div>
@@ -417,6 +569,8 @@ export default function App() {
                 placeholder={
                   activeTab === 'applications'
                     ? 'Search applications...'
+                    : activeTab === 'customers'
+                      ? 'Search customers...'
                     : activeTab === 'leads'
                       ? 'Search estimate leads...'
                       : 'Search customer, vehicle, phone, status...'
@@ -565,7 +719,11 @@ export default function App() {
         ) : null}
 
         {activeTab === 'invoices' ? (
-          <InvoiceGenerator />
+          <InvoiceGenerator customers={customers} onCustomerSaved={saveCustomer} />
+        ) : null}
+
+        {activeTab === 'customers' ? (
+          <CustomerDatabase customers={filteredCustomers} onDelete={deleteCustomer} />
         ) : null}
 
         {activeTab === 'leads' ? (

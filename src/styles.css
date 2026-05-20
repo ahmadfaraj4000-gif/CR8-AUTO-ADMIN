@@ -134,6 +134,7 @@ button {
 .main-panel {
   padding: 28px;
   display: grid;
+  align-content: start;
   gap: 22px;
 }
 .page-header {
@@ -855,6 +856,31 @@ code {
   align-items: center;
 }
 
+.customer-database {
+  display: grid;
+  gap: 18px;
+}
+
+.customer-database-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 16px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  padding: 18px;
+}
+
+.customer-database-header h2 {
+  margin: 4px 0 0;
+}
+
+.customer-database-header strong {
+  font-size: 34px;
+  color: #ffffff;
+}
+
 .invoice-workspace {
   display: grid;
   grid-template-columns: minmax(360px, 0.9fr) minmax(520px, 1.1fr);
@@ -1120,6 +1146,7 @@ code {
 
 @media (max-width: 700px) {
   .invoice-actions,
+  .customer-database-header,
   .invoice-paper-header,
   .invoice-section-title-row {
     flex-direction: column;
