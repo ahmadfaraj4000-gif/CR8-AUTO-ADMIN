@@ -95,11 +95,16 @@ function normalizeCustomer(customer) {
     email: customer.email || '',
     address: customer.address || '',
     vehicle: customer.vehicle || '',
+    vehicle_year: customer.vehicle_year || '',
+    vehicle_make: customer.vehicle_make || '',
+    vehicle_model: customer.vehicle_model || '',
     vin: customer.vin || '',
     mileage: customer.mileage || '',
     plate: customer.plate || '',
     source: customer.source || 'invoice',
-    updatedAt: customer.updatedAt || customer.created_at || new Date().toISOString()
+    notes: customer.notes || '',
+    updatedAt: customer.updatedAt || customer.updated_at || customer.created_at || new Date().toISOString(),
+    isSupabaseCustomer: Boolean(customer.isSupabaseCustomer)
   }
 }
 
@@ -126,6 +131,7 @@ export default function App() {
   const [bookings, setBookings] = useState([])
   const [applications, setApplications] = useState([])
   const [estimateLeads, setEstimateLeads] = useState([])
+  const [supabaseCustomers, setSupabaseCustomers] = useState([])
   const [savedCustomers, setSavedCustomers] = useState(loadSavedCustomers)
   const [deletedCustomerKeys, setDeletedCustomerKeys] = useState(loadDeletedCustomerKeys)
   const [selectedBooking, setSelectedBooking] = useState(null)
@@ -157,6 +163,7 @@ export default function App() {
         setBookings([])
         setApplications([])
         setEstimateLeads([])
+        setSupabaseCustomers([])
         setLoading(false)
         return
       }
@@ -175,12 +182,40 @@ export default function App() {
         setProfile(profileData)
       }
 
-      await Promise.all([loadBookings(), loadApplications(), loadEstimateLeads()])
+      await Promise.all([loadBookings(), loadApplications(), loadEstimateLeads(), loadCustomers()])
       setLoading(false)
     }
 
     bootstrap()
   }, [session])
+
+  useEffect(() => {
+    if (!session?.user || !savedCustomers.length) return
+
+    async function migrateLocalCustomers() {
+      const existingKeys = new Set(supabaseCustomers.map(customerKey))
+      const customersToMigrate = savedCustomers
+        .map((customer) => normalizeCustomer({ ...customer, source: customer.source || 'invoice' }))
+        .filter((customer) => customerKey(customer) && !existingKeys.has(customerKey(customer)))
+
+      if (!customersToMigrate.length) return
+
+      const { error } = await supabase
+        .from('customers')
+        .insert(customersToMigrate.map(customerToRow))
+
+      if (error) {
+        setError(error.message)
+        return
+      }
+
+      localStorage.removeItem(CUSTOMER_KEY)
+      setSavedCustomers([])
+      await loadCustomers()
+    }
+
+    migrateLocalCustomers()
+  }, [session, supabaseCustomers, savedCustomers])
 
   async function loadBookings() {
     const { data, error } = await supabase
@@ -224,6 +259,23 @@ export default function App() {
     }
 
     setEstimateLeads(data || [])
+  }
+
+  async function loadCustomers() {
+    const { data, error } = await supabase
+      .from('customers')
+      .select('*')
+      .order('updated_at', { ascending: false })
+
+    if (error) {
+      setError(error.message)
+      return
+    }
+
+    setSupabaseCustomers((data || []).map((customer) => normalizeCustomer({
+      ...customer,
+      isSupabaseCustomer: true
+    })))
   }
 
   async function handleEstimateConverted() {
@@ -296,36 +348,76 @@ export default function App() {
     await supabase.auth.signOut()
   }
 
-  function saveCustomer(customer) {
-    setSavedCustomers((current) => {
-      const normalized = normalizeCustomer({ ...customer, source: customer.source || 'invoice', updatedAt: new Date().toISOString() })
-      const next = dedupeCustomers([
-        normalized,
-        ...current
-      ])
-
-      localStorage.setItem(CUSTOMER_KEY, JSON.stringify(next))
-      setDeletedCustomerKeys((keys) => {
-        const nextKeys = keys.filter((key) => key !== customerKey(normalized))
-        localStorage.setItem(DELETED_CUSTOMER_KEY, JSON.stringify(nextKeys))
-        return nextKeys
-      })
-      return next
-    })
+  function customerToRow(customer) {
+    return {
+      name: customer.name || '',
+      phone: customer.phone || null,
+      email: customer.email || null,
+      address: customer.address || null,
+      vehicle: customer.vehicle || null,
+      vehicle_year: customer.vehicle_year || null,
+      vehicle_make: customer.vehicle_make || null,
+      vehicle_model: customer.vehicle_model || null,
+      vin: customer.vin || null,
+      mileage: customer.mileage || null,
+      plate: customer.plate || null,
+      source: customer.source || 'invoice',
+      notes: customer.notes || null
+    }
   }
 
-  function deleteCustomer(customer) {
+  async function saveCustomer(customer) {
+    const normalized = normalizeCustomer({ ...customer, source: customer.source || 'invoice' })
+
+    if (!normalized.name && !normalized.phone && !normalized.email) return
+
+    const existing = supabaseCustomers.find((savedCustomer) => customerKey(savedCustomer) === customerKey(normalized))
+    const row = customerToRow(normalized)
+
+    const { error } = existing?.isSupabaseCustomer
+      ? await supabase.from('customers').update(row).eq('id', existing.id)
+      : await supabase.from('customers').insert([row])
+
+    if (error) {
+      setError(error.message)
+      return
+    }
+
+    setDeletedCustomerKeys((keys) => {
+      const nextKeys = keys.filter((key) => key !== customerKey(normalized))
+      localStorage.setItem(DELETED_CUSTOMER_KEY, JSON.stringify(nextKeys))
+      return nextKeys
+    })
+
+    await loadCustomers()
+  }
+
+  async function deleteCustomer(customer) {
     const key = customerKey(customer)
     if (!key) return
 
     const confirmed = window.confirm(`Delete ${customer.name || customer.phone || 'this customer'} from the customer database?`)
     if (!confirmed) return
 
-    setSavedCustomers((current) => {
-      const next = current.filter((savedCustomer) => customerKey(savedCustomer) !== key)
-      localStorage.setItem(CUSTOMER_KEY, JSON.stringify(next))
-      return next
-    })
+    if (customer.isSupabaseCustomer) {
+      const { error } = await supabase
+        .from('customers')
+        .delete()
+        .eq('id', customer.id)
+
+      if (error) {
+        setError(error.message)
+        return
+      }
+
+      await loadCustomers()
+    } else {
+      setSavedCustomers((current) => {
+        const next = current.filter((savedCustomer) => customerKey(savedCustomer) !== key)
+        localStorage.setItem(CUSTOMER_KEY, JSON.stringify(next))
+        return next
+      })
+    }
 
     setDeletedCustomerKeys((current) => {
       const next = Array.from(new Set([...current, key]))
@@ -459,14 +551,17 @@ export default function App() {
       email: lead.email || '',
       address: lead.zip ? `ZIP ${lead.zip}` : '',
       vehicle: lead.vehicle || '',
+      vehicle_year: lead.vehicle_year || '',
+      vehicle_make: lead.vehicle_make || '',
+      vehicle_model: lead.vehicle_model || '',
       vin: lead.vin || '',
       source: 'estimate lead',
       updatedAt: lead.updated_at || lead.created_at
     }))
 
-    return dedupeCustomers([...savedCustomers, ...bookingCustomers, ...leadCustomers])
+    return dedupeCustomers([...supabaseCustomers, ...savedCustomers, ...bookingCustomers, ...leadCustomers])
       .filter((customer) => !deletedCustomerKeys.includes(customerKey(customer)))
-  }, [bookings, estimateLeads, savedCustomers, deletedCustomerKeys])
+  }, [bookings, estimateLeads, supabaseCustomers, savedCustomers, deletedCustomerKeys])
 
   const filteredCustomers = useMemo(() => {
     const term = search.trim().toLowerCase()
