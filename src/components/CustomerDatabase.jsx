@@ -10,7 +10,7 @@ export default function CustomerDatabase({ customers = [], onDelete }) {
         <div>
           <p className="eyebrow">Customer Database</p>
           <h2>Saved customers</h2>
-          <p className="muted">Customers are gathered from appointments, estimate leads, and invoices saved in this browser.</p>
+          <p className="muted">Customers are saved in Supabase and supplemented with appointment and estimate lead history.</p>
         </div>
 
         <strong>{customers.length}</strong>
