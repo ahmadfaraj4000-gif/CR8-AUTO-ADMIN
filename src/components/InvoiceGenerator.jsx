@@ -1,5 +1,7 @@
 import logo from '../assets/logo.png'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+
+const DRAFT_KEY = 'cr8InvoiceDraft'
 
 const currency = new Intl.NumberFormat('en-US', {
   style: 'currency',
@@ -25,9 +27,8 @@ function todayISO() {
   return new Date().toISOString().split('T')[0]
 }
 
-export default function InvoiceGenerator() {
-  const [invoiceView, setInvoiceView] = useState('edit')
-  const [invoice, setInvoice] = useState({
+function newInvoice() {
+  return {
     invoiceNumber: `CR8-${new Date().getFullYear()}-${String(Date.now()).slice(-5)}`,
     invoiceDate: todayISO(),
     dueDate: todayISO(),
@@ -44,12 +45,77 @@ export default function InvoiceGenerator() {
     amountPaid: '',
     notes: 'Thank you for choosing CR8 Autos. Payment is due upon completion unless otherwise agreed in writing.',
     terms: 'All parts and labor are listed above. Warranty coverage may vary by repair type and part supplier.'
-  })
+  }
+}
 
-  const [items, setItems] = useState([
-    newLineItem('part'),
-    newLineItem('labor')
-  ])
+function loadDraft() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(DRAFT_KEY) || 'null')
+    if (!saved) return null
+
+    return {
+      documentType: saved.documentType === 'estimate' ? 'estimate' : 'invoice',
+      invoice: { ...newInvoice(), ...(saved.invoice || {}) },
+      items: Array.isArray(saved.items) && saved.items.length > 0
+        ? saved.items
+        : [newLineItem('part'), newLineItem('labor')]
+    }
+  } catch {
+    return null
+  }
+}
+
+function customerKey(customer) {
+  return [
+    customer.customerName || customer.name,
+    customer.customerPhone || customer.phone,
+    customer.customerEmail || customer.email,
+    customer.vehicle,
+    customer.vin
+  ]
+    .filter(Boolean)
+    .join('|')
+    .toLowerCase()
+}
+
+function normalizeCustomer(customer) {
+  return {
+    id: customer.id || customerKey(customer) || crypto.randomUUID(),
+    name: customer.customerName || customer.name || '',
+    phone: customer.customerPhone || customer.phone || '',
+    email: customer.customerEmail || customer.email || '',
+    address: customer.customerAddress || customer.address || '',
+    vehicle: customer.vehicle || '',
+    vin: customer.vin || '',
+    mileage: customer.mileage || '',
+    plate: customer.plate || '',
+    source: customer.source || 'invoice',
+    updatedAt: customer.updatedAt || new Date().toISOString()
+  }
+}
+
+export default function InvoiceGenerator({ customers = [], onCustomerSaved }) {
+  const [invoiceView, setInvoiceView] = useState('edit')
+  const [selectedCustomerId, setSelectedCustomerId] = useState('')
+  const [documentType, setDocumentType] = useState(() => loadDraft()?.documentType || 'invoice')
+  const [invoice, setInvoice] = useState(() => loadDraft()?.invoice || newInvoice())
+  const [items, setItems] = useState(() => loadDraft()?.items || [newLineItem('part'), newLineItem('labor')])
+
+  const documentLabel = documentType === 'estimate' ? 'Estimate' : 'Invoice'
+  const documentLabelUpper = documentLabel.toUpperCase()
+
+  useEffect(() => {
+    localStorage.setItem(DRAFT_KEY, JSON.stringify({ documentType, invoice, items }))
+  }, [documentType, invoice, items])
+
+  const customerOptions = useMemo(() => {
+    const seen = new Map()
+    customers.map(normalizeCustomer).forEach((customer) => {
+      const key = customerKey(customer)
+      if (key && !seen.has(key)) seen.set(key, customer)
+    })
+    return [...seen.values()].sort((a, b) => a.name.localeCompare(b.name))
+  }, [customers])
 
   function updateInvoice(field, value) {
     setInvoice((current) => ({ ...current, [field]: value }))
@@ -72,23 +138,44 @@ export default function InvoiceGenerator() {
   }
 
   function clearInvoice() {
+    setSelectedCustomerId('')
+    setInvoice(newInvoice())
+    setItems([newLineItem('part'), newLineItem('labor')])
+    localStorage.removeItem(DRAFT_KEY)
+  }
+
+  function selectCustomer(id) {
+    setSelectedCustomerId(id)
+    const customer = customerOptions.find((option) => option.id === id)
+    if (!customer) return
+
     setInvoice((current) => ({
       ...current,
-      invoiceNumber: `CR8-${new Date().getFullYear()}-${String(Date.now()).slice(-5)}`,
-      invoiceDate: todayISO(),
-      dueDate: todayISO(),
-      customerName: '',
-      customerPhone: '',
-      customerEmail: '',
-      customerAddress: '',
-      vehicle: '',
-      vin: '',
-      mileage: '',
-      plate: '',
-      discount: '',
-      amountPaid: ''
+      customerName: customer.name || '',
+      customerPhone: customer.phone || '',
+      customerEmail: customer.email || '',
+      customerAddress: customer.address || '',
+      vehicle: customer.vehicle || '',
+      vin: customer.vin || '',
+      mileage: customer.mileage || '',
+      plate: customer.plate || ''
     }))
-    setItems([newLineItem('part'), newLineItem('labor')])
+  }
+
+  function saveCustomer() {
+    const customer = normalizeCustomer({
+      customerName: invoice.customerName,
+      customerPhone: invoice.customerPhone,
+      customerEmail: invoice.customerEmail,
+      customerAddress: invoice.customerAddress,
+      vehicle: invoice.vehicle,
+      vin: invoice.vin,
+      mileage: invoice.mileage,
+      plate: invoice.plate
+    })
+
+    if (!customer.name && !customer.phone && !customer.email) return
+    onCustomerSaved?.(customer)
   }
 
   const totals = useMemo(() => {
@@ -130,27 +217,41 @@ export default function InvoiceGenerator() {
       <div className="invoice-actions no-print">
         <div>
           <p className="eyebrow">Invoice Generator</p>
-          <h2>Create a customer invoice</h2>
-          <p className="muted">Fill in the repair details, review totals, then print or save as PDF.</p>
+          <h2>Create a customer {documentLabel.toLowerCase()}</h2>
+          <p className="muted">Drafts save automatically while you move between tabs.</p>
         </div>
 
         <div className="invoice-action-buttons">
           <button
+            className={documentType === 'invoice' ? 'primary-btn' : 'ghost-btn'}
+            onClick={() => setDocumentType('invoice')}
+          >
+            Invoice
+          </button>
+
+          <button
+            className={documentType === 'estimate' ? 'primary-btn' : 'ghost-btn'}
+            onClick={() => setDocumentType('estimate')}
+          >
+            Estimate
+          </button>
+
+          <button
             className={invoiceView === 'edit' ? 'primary-btn' : 'ghost-btn'}
             onClick={() => setInvoiceView('edit')}
           >
-            Edit Invoice
+            Edit
           </button>
 
           <button
             className={invoiceView === 'preview' ? 'primary-btn' : 'ghost-btn'}
             onClick={() => setInvoiceView('preview')}
           >
-            Preview Invoice
+            Preview
           </button>
 
           <button className="ghost-btn" onClick={clearInvoice}>Clear</button>
-          <button className="primary-btn" onClick={() => { setInvoiceView('preview'); setTimeout(() => window.print(), 80) }}>Print / Save PDF</button>
+          <button className="primary-btn" onClick={() => { saveCustomer(); setInvoiceView('preview'); setTimeout(() => window.print(), 80) }}>Print {documentLabel}</button>
         </div>
       </div>
 
@@ -160,7 +261,7 @@ export default function InvoiceGenerator() {
             <h3>Invoice Details</h3>
             <div className="invoice-form-grid">
               <label>
-                Invoice #
+                {documentLabel} #
                 <input value={invoice.invoiceNumber} onChange={(e) => updateInvoice('invoiceNumber', e.target.value)} />
               </label>
               <label>
@@ -179,7 +280,21 @@ export default function InvoiceGenerator() {
           </div>
 
           <div className="invoice-form-section">
-            <h3>Customer</h3>
+            <div className="invoice-section-title-row">
+              <h3>Customer</h3>
+              <button className="ghost-btn small" onClick={saveCustomer}>Save Customer</button>
+            </div>
+            <label>
+              Existing Customer
+              <select value={selectedCustomerId} onChange={(e) => selectCustomer(e.target.value)}>
+                <option value="">Select a customer...</option>
+                {customerOptions.map((customer) => (
+                  <option key={customer.id} value={customer.id}>
+                    {[customer.name, customer.vehicle, customer.phone].filter(Boolean).join(' - ')}
+                  </option>
+                ))}
+              </select>
+            </label>
             <div className="invoice-form-grid">
               <label>
                 Name
@@ -310,10 +425,14 @@ export default function InvoiceGenerator() {
               </div>
 
               <div className="invoice-meta">
-                <h1>INVOICE</h1>
-                <p>Invoice #: {invoice.invoiceNumber}</p>
+                <h1>{documentLabelUpper}</h1>
+                <p>{documentLabel} #: {invoice.invoiceNumber}</p>
                 <p>Date: {new Date(invoice.invoiceDate).toLocaleDateString()}</p>
-                <p>Due: {new Date(invoice.dueDate).toLocaleDateString()}</p>
+                {documentType === 'invoice' ? (
+                  <p>Due: {new Date(invoice.dueDate).toLocaleDateString()}</p>
+                ) : (
+                  <p>Valid Through: {new Date(invoice.dueDate).toLocaleDateString()}</p>
+                )}
               </div>
             </div>
 
@@ -388,13 +507,19 @@ export default function InvoiceGenerator() {
               <div><span>Discount</span><strong>-{money(totals.discount)}</strong></div>
               <div><span>Tax</span><strong>{money(totals.tax)}</strong></div>
               <div><span>Total</span><strong>{money(totals.total)}</strong></div>
-              <div><span>Paid</span><strong>{money(totals.amountPaid)}</strong></div>
-              <div className="balance-row"><span>Balance Due</span><strong>{money(totals.balanceDue)}</strong></div>
+              {documentType === 'invoice' ? (
+                <>
+                  <div><span>Paid</span><strong>{money(totals.amountPaid)}</strong></div>
+                  <div className="balance-row"><span>Balance Due</span><strong>{money(totals.balanceDue)}</strong></div>
+                </>
+              ) : (
+                <div className="balance-row"><span>Estimated Total</span><strong>{money(totals.total)}</strong></div>
+              )}
             </div>
           </div>
 
           <footer className="invoice-footer">
-            <p>Thank you for your business.</p>
+            <p>{documentType === 'invoice' ? 'Thank you for your business.' : 'Estimate is subject to final inspection and parts availability.'}</p>
           </footer>
         </article>
       </div>
