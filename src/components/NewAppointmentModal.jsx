@@ -1,6 +1,40 @@
 import { useState } from 'react'
 import { supabase } from '../lib/supabase'
 
+function normalizeBookingTime(value) {
+  const raw = String(value || '').trim().toUpperCase()
+  if (!raw) return ''
+
+  const match = raw.match(/^(\d{1,2})(?::(\d{2}))?\s*(AM|PM)?$/)
+  if (!match) return raw
+
+  let hour = Number(match[1])
+  const minute = match[2] || '00'
+  const meridiem = match[3]
+
+  if (meridiem === 'PM' && hour !== 12) hour += 12
+  if (meridiem === 'AM' && hour === 12) hour = 0
+
+  return `${String(hour).padStart(2, '0')}:${minute}`
+}
+
+async function isSlotAlreadyBooked(date, time) {
+  const normalizedTime = normalizeBookingTime(time)
+
+  const { data, error } = await supabase
+    .from('bookings')
+    .select('id, appointment_time, service, status')
+    .eq('appointment_date', date)
+
+  if (error) throw error
+
+  return (data || []).some((booking) => (
+    booking.status !== 'cancelled' &&
+    booking.status !== 'archived' &&
+    normalizeBookingTime(booking.appointment_time) === normalizedTime
+  ))
+}
+
 export default function NewAppointmentModal({
   open,
   onClose,
@@ -30,6 +64,25 @@ export default function NewAppointmentModal({
   async function handleSave() {
     setSaving(true)
     setError('')
+
+    if (!form.appointment_date || !form.appointment_time) {
+      setError('Appointment date and time are required.')
+      setSaving(false)
+      return
+    }
+
+    try {
+      const alreadyBooked = await isSlotAlreadyBooked(form.appointment_date, form.appointment_time)
+      if (alreadyBooked) {
+        setError('That appointment time is already booked. Choose another time.')
+        setSaving(false)
+        return
+      }
+    } catch (err) {
+      setError(err.message)
+      setSaving(false)
+      return
+    }
 
     const hasDropoff = !!form.dropoff_date
 

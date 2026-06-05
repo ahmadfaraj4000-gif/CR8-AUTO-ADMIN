@@ -20,6 +20,7 @@ export default function AppointmentModal({ booking, onClose, onSaved }) {
   const [status, setStatus] = useState('new')
   const [notes, setNotes] = useState('')
   const [saving, setSaving] = useState(false)
+  const [deleting, setDeleting] = useState(false)
   const [error, setError] = useState('')
   const [history, setHistory] = useState([])
   const [historyLoading, setHistoryLoading] = useState(false)
@@ -97,6 +98,32 @@ export default function AppointmentModal({ booking, onClose, onSaved }) {
     }
 
     setSaving(false)
+    onSaved()
+    onClose()
+  }
+
+  async function handleDelete() {
+    const confirmed = window.confirm(
+      'Delete this appointment/request permanently? This cannot be undone.'
+    )
+
+    if (!confirmed) return
+
+    setDeleting(true)
+    setError('')
+
+    const { error } = await supabase
+      .from('bookings')
+      .delete()
+      .eq('id', booking.id)
+
+    if (error) {
+      setError(error.message)
+      setDeleting(false)
+      return
+    }
+
+    setDeleting(false)
     onSaved()
     onClose()
   }
@@ -243,6 +270,9 @@ export default function AppointmentModal({ booking, onClose, onSaved }) {
         {error ? <div className="error-box">{error}</div> : null}
 
         <div className="modal-actions">
+          <button className="delete-btn" onClick={handleDelete} disabled={deleting || saving}>
+            {deleting ? 'Deleting...' : 'Delete permanently'}
+          </button>
           <button className="ghost-btn" onClick={onClose}>Cancel</button>
           <button onClick={handleSave} disabled={saving}>
             {saving ? 'Saving...' : 'Save changes'}

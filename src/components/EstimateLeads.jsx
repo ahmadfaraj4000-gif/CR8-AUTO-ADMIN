@@ -23,6 +23,40 @@ function todayISO() {
   return new Date().toISOString().split('T')[0]
 }
 
+function normalizeBookingTime(value) {
+  const raw = String(value || '').trim().toUpperCase()
+  if (!raw) return ''
+
+  const match = raw.match(/^(\d{1,2})(?::(\d{2}))?\s*(AM|PM)?$/)
+  if (!match) return raw
+
+  let hour = Number(match[1])
+  const minute = match[2] || '00'
+  const meridiem = match[3]
+
+  if (meridiem === 'PM' && hour !== 12) hour += 12
+  if (meridiem === 'AM' && hour === 12) hour = 0
+
+  return `${String(hour).padStart(2, '0')}:${minute}`
+}
+
+async function isSlotAlreadyBooked(date, time) {
+  const normalizedTime = normalizeBookingTime(time)
+
+  const { data, error } = await supabase
+    .from('bookings')
+    .select('id, appointment_time, status')
+    .eq('appointment_date', date)
+
+  if (error) throw error
+
+  return (data || []).some((booking) => (
+    booking.status !== 'cancelled' &&
+    booking.status !== 'archived' &&
+    normalizeBookingTime(booking.appointment_time) === normalizedTime
+  ))
+}
+
 function getAiField(lead, key, fallback = '—') {
   const ai = lead.ai_result || {}
   return ai[key] || fallback
@@ -181,6 +215,22 @@ export default function EstimateLeads({ leads = [], onSaved, onConverted }) {
       lead.photo_urls?.length ? `Photo URLs: ${normalizeArray(lead.photo_urls).join(' | ')}` : ''
     ].filter(Boolean).join('\n\n')
 
+    const appointmentDate = todayISO()
+    const appointmentTime = '09:00'
+
+    try {
+      const alreadyBooked = await isSlotAlreadyBooked(appointmentDate, appointmentTime)
+      if (alreadyBooked) {
+        setError('9:00 AM is already booked today. Create the appointment manually for another available time.')
+        setConverting(false)
+        return
+      }
+    } catch (err) {
+      setError(err.message)
+      setConverting(false)
+      return
+    }
+
     const { error: bookingError } = await supabase
       .from('bookings')
       .insert([
@@ -190,8 +240,8 @@ export default function EstimateLeads({ leads = [], onSaved, onConverted }) {
           email: lead.email || '',
           vehicle: lead.vehicle || '',
           service: `AI Photo Estimate - ${lead.damage_area || lead.damage_type || 'Collision Review'}`,
-          appointment_date: todayISO(),
-          appointment_time: '09:00',
+          appointment_date: appointmentDate,
+          appointment_time: appointmentTime,
           notes: appointmentNotes,
           status: 'new',
           created_source: 'estimate_lead'
