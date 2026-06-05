@@ -25,18 +25,6 @@ function formatStatus(status) {
   return (status || 'new').replaceAll('_', ' ')
 }
 
-function phoneLink(phone) {
-  if (!phone) return null
-  const cleaned = phone.replace(/[^\d+]/g, '')
-  return `tel:${cleaned}`
-}
-
-function smsLink(phone) {
-  if (!phone) return null
-  const cleaned = phone.replace(/[^\d+]/g, '')
-  return `sms:${cleaned}`
-}
-
 function todayISO() {
   return new Date().toISOString().split('T')[0]
 }
@@ -55,184 +43,6 @@ function isThisWeek(dateValue) {
   end.setDate(start.getDate() + 7)
 
   return d >= start && d < end
-}
-
-const empireRideServices = [
-  {
-    name: 'Executive Services',
-    description: 'Professional black Ford Expedition rides for meetings, client visits, and high-priority business travel.'
-  },
-  {
-    name: 'Wedding Chauffeur',
-    description: 'Luxury Ford Expedition wedding-day transportation for couples, wedding parties, and family guests.'
-  },
-  {
-    name: 'Corporate Black Car Service',
-    description: 'Dependable black Ford Expedition service for companies, hosted guests, and executive travel.'
-  },
-  {
-    name: 'Night Out VIP Ride',
-    description: 'Premium black SUV rides for dinners, concerts, celebrations, and safe nights out.'
-  },
-  {
-    name: 'Airport Transfer',
-    description: 'Ford Expedition airport pickup and drop-off service planned around flight and pickup timing.'
-  }
-]
-
-const empireRideServiceNames = new Set(empireRideServices.map((service) => service.name))
-
-function isEmpireRideBooking(booking) {
-  return empireRideServiceNames.has(booking.service)
-}
-
-function EmpireEliteRidesPanel({
-  bookings,
-  allRideBookings,
-  onSelect,
-  onStatusChange,
-  onPickedUp
-}) {
-  const openRideBookings = allRideBookings.filter((booking) =>
-    ['new', 'contacted', 'follow_up_needed', 'confirmed'].includes(booking.status || 'new')
-  )
-  const confirmedRideBookings = allRideBookings.filter((booking) => booking.status === 'confirmed')
-  const completedRideBookings = allRideBookings.filter((booking) => booking.status === 'completed')
-
-  return (
-    <div className="rides-admin-panel">
-      <section className="stats-grid stats-grid-owner">
-        <article className="stat-card urgent">
-          <span>Ride Requests</span>
-          <strong>{openRideBookings.length}</strong>
-        </article>
-
-        <article className="stat-card blue">
-          <span>Confirmed Rides</span>
-          <strong>{confirmedRideBookings.length}</strong>
-        </article>
-
-        <article className="stat-card success">
-          <span>Completed Rides</span>
-          <strong>{completedRideBookings.length}</strong>
-        </article>
-      </section>
-
-      <section className="rides-hero-card">
-        <div>
-          <p className="eyebrow">Empire Elite Rides Queue</p>
-          <h2>Booked Ford Expedition rides</h2>
-          <p>
-            Customers who booked an Empire Elite Rides service appear here. Open a request to see
-            notes such as pickup, destination, flight, passenger count, and special requests.
-          </p>
-        </div>
-      </section>
-
-      {bookings.length === 0 ? (
-        <div className="empty-command-card">
-          <h3>No ride bookings found.</h3>
-          <p>Empire Elite Rides bookings will show here when customers submit the ride service form.</p>
-        </div>
-      ) : (
-        <div className="ride-booking-list">
-          {bookings.map((booking) => (
-            <article className={`ride-booking-card status-border-${booking.status || 'new'}`} key={booking.id}>
-              <div className="ride-booking-main">
-                <div className="command-date">
-                  <strong>{booking.appointment_date || 'No date'}</strong>
-                  <span>
-                    {booking.ride_start_time && booking.ride_end_time
-                      ? `${booking.ride_start_time} - ${booking.ride_end_time}`
-                      : booking.appointment_time || 'No time'}
-                  </span>
-                </div>
-
-                <div className="ride-booking-info">
-                  <div className="command-topline">
-                    <h3>{booking.name || 'Unnamed Rider'}</h3>
-                    <span className={`status-pill status-${booking.status || 'new'}`}>
-                      {formatStatus(booking.status)}
-                    </span>
-                  </div>
-
-                  <div className="command-subline">
-                    <span>{booking.service || 'Ride service not listed'}</span>
-                    <span>•</span>
-                    <span>Black Ford Expedition</span>
-                  </div>
-
-                  <div className="command-subline muted">
-                    <span>{booking.phone || 'No phone'}</span>
-                    <span>•</span>
-                    <span>{booking.email || 'No email'}</span>
-                  </div>
-
-                  <div className="ride-details">
-                    {booking.ride_start_time && booking.ride_end_time ? (
-                      <strong>
-                        Reserved block: {booking.ride_start_time} - {booking.ride_end_time}
-                        {booking.ride_duration_hours ? ` (${booking.ride_duration_hours} hr)` : ''}
-                      </strong>
-                    ) : null}
-                    {booking.notes || 'No ride details yet. Open this request and add pickup, destination, passenger count, flight, or event notes.'}
-                  </div>
-                </div>
-              </div>
-
-              <div className="quick-actions">
-                {booking.phone ? (
-                  <>
-                    <a className="ghost-btn small" href={phoneLink(booking.phone)}>
-                      Call
-                    </a>
-
-                    <a className="ghost-btn small" href={smsLink(booking.phone)}>
-                      Text
-                    </a>
-                  </>
-                ) : null}
-
-                <button className="ghost-btn small" onClick={() => onSelect(booking)}>
-                  Open
-                </button>
-
-                {booking.status !== 'contacted' && booking.status !== 'archived' ? (
-                  <button className="ghost-btn small" onClick={() => onStatusChange(booking.id, 'contacted')}>
-                    Contacted
-                  </button>
-                ) : null}
-
-                {booking.status !== 'confirmed' && booking.status !== 'archived' ? (
-                  <button className="primary-btn small" onClick={() => onStatusChange(booking.id, 'confirmed')}>
-                    Confirm
-                  </button>
-                ) : null}
-
-                {booking.status !== 'follow_up_needed' && booking.status !== 'archived' ? (
-                  <button className="ghost-btn small" onClick={() => onStatusChange(booking.id, 'follow_up_needed')}>
-                    Follow Up
-                  </button>
-                ) : null}
-
-                {booking.status !== 'completed' && booking.status !== 'archived' ? (
-                  <button className="success-btn small" onClick={() => onPickedUp(booking.id)}>
-                    Complete
-                  </button>
-                ) : null}
-
-                {booking.status !== 'archived' ? (
-                  <button className="archive-btn small" onClick={() => onStatusChange(booking.id, 'archived')}>
-                    Hide
-                  </button>
-                ) : null}
-              </div>
-            </article>
-          ))}
-        </div>
-      )}
-    </div>
-  )
 }
 
 function getDaysInShop(dropoffDate, pickupDate) {
@@ -677,36 +487,6 @@ export default function App() {
     )
   }, [bookings, activeBookings, appointmentView, search])
 
-  const rideBookings = useMemo(
-    () => bookings.filter(isEmpireRideBooking),
-    [bookings]
-  )
-
-  const filteredRideBookings = useMemo(() => {
-    const term = search.trim().toLowerCase()
-    const rows = rideBookings.filter((booking) => booking.status !== 'archived')
-
-    if (!term) return rows
-
-    return rows.filter((booking) =>
-      [
-        booking.name,
-        booking.phone,
-        booking.email,
-        booking.vehicle,
-        booking.service,
-        booking.appointment_date,
-        booking.appointment_time,
-        booking.notes,
-        booking.status
-      ]
-        .filter(Boolean)
-        .join(' ')
-        .toLowerCase()
-        .includes(term)
-    )
-  }, [rideBookings, search])
-
   const filteredApplications = useMemo(() => {
     const term = search.trim().toLowerCase()
     if (!term) return applications
@@ -857,9 +637,6 @@ export default function App() {
           <button className={activeTab === 'leads' ? 'active' : ''} onClick={() => setActiveTab('leads')}>
             Estimate Leads
           </button>
-          <button className={activeTab === 'rides' ? 'active' : ''} onClick={() => setActiveTab('rides')}>
-            Elite Rides
-          </button>
         </nav>
 
         <div className="profile-box">
@@ -881,7 +658,6 @@ export default function App() {
               {activeTab === 'invoices' && 'Invoices'}
               {activeTab === 'customers' && 'Customers'}
               {activeTab === 'leads' && 'Estimate Leads'}
-              {activeTab === 'rides' && 'Empire Elite Rides'}
             </h1>
           </div>
 
@@ -896,8 +672,6 @@ export default function App() {
                       ? 'Search customers...'
                     : activeTab === 'leads'
                       ? 'Search estimate leads...'
-                    : activeTab === 'rides'
-                      ? 'Search ride customers, phone, date, details...'
                       : 'Search customer, vehicle, phone, status...'
                 }
                 value={search}
@@ -1059,15 +833,6 @@ export default function App() {
           />
         ) : null}
 
-        {activeTab === 'rides' ? (
-          <EmpireEliteRidesPanel
-            bookings={filteredRideBookings}
-            allRideBookings={rideBookings}
-            onSelect={setSelectedBooking}
-            onStatusChange={updateBookingStatus}
-            onPickedUp={markPickedUp}
-          />
-        ) : null}
       </main>
 
       <AppointmentModal
