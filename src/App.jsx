@@ -141,7 +141,11 @@ function EmpireEliteRidesPanel({
               <div className="ride-booking-main">
                 <div className="command-date">
                   <strong>{booking.appointment_date || 'No date'}</strong>
-                  <span>{booking.appointment_time || 'No time'}</span>
+                  <span>
+                    {booking.ride_start_time && booking.ride_end_time
+                      ? `${booking.ride_start_time} - ${booking.ride_end_time}`
+                      : booking.appointment_time || 'No time'}
+                  </span>
                 </div>
 
                 <div className="ride-booking-info">
@@ -165,6 +169,12 @@ function EmpireEliteRidesPanel({
                   </div>
 
                   <div className="ride-details">
+                    {booking.ride_start_time && booking.ride_end_time ? (
+                      <strong>
+                        Reserved block: {booking.ride_start_time} - {booking.ride_end_time}
+                        {booking.ride_duration_hours ? ` (${booking.ride_duration_hours} hr)` : ''}
+                      </strong>
+                    ) : null}
                     {booking.notes || 'No ride details yet. Open this request and add pickup, destination, passenger count, flight, or event notes.'}
                   </div>
                 </div>

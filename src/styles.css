@@ -635,6 +635,12 @@ code {
   line-height: 1.55;
 }
 
+.ride-details strong {
+  display: block;
+  margin-bottom: 6px;
+  color: #fff;
+}
+
 @media (max-width: 1200px) {
   .rides-service-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
