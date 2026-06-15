@@ -1,69 +1,36 @@
-function formatDate(value) {
-  if (!value) return '—'
-  return new Date(value).toLocaleDateString()
+import { useMemo } from 'react'
+
+function date(value) {
+  return value ? new Date(value).toLocaleDateString() : '-'
 }
 
-export default function CustomerDatabase({ customers = [], onDelete }) {
+export default function CustomerDatabase({ customers = [], search = '', onDelete }) {
+  const rows = useMemo(() => {
+    const term = search.trim().toLowerCase()
+    if (!term) return customers
+    return customers.filter((customer) => [
+      customer.name, customer.phone, customer.email, customer.vehicle, customer.source
+    ].filter(Boolean).join(' ').toLowerCase().includes(term))
+  }, [customers, search])
+
   return (
     <section className="customer-database">
-      <div className="customer-database-header">
-        <div>
-          <p className="eyebrow">Customer Database</p>
-          <h2>Saved customers</h2>
-          <p className="muted">Customers are saved in Supabase and supplemented with appointment and estimate lead history.</p>
-        </div>
-
-        <strong>{customers.length}</strong>
-      </div>
-
       <div className="table-wrap">
         <table>
-          <thead>
-            <tr>
-              <th>Customer</th>
-              <th>Contact</th>
-              <th>Vehicle</th>
-              <th>Source</th>
-              <th>Updated</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
+          <thead><tr><th>Customer</th><th>Contact</th><th>Vehicle</th><th>Source</th><th>History</th><th>Updated</th><th></th></tr></thead>
           <tbody>
-            {customers.length === 0 ? (
-              <tr>
-                <td className="empty-cell" colSpan="6">
-                  No customers found yet.
-                </td>
+            {rows.map((customer) => (
+              <tr key={customer._id}>
+                <td><strong>{customer.name}</strong><span>{customer.address || 'No address saved'}</span></td>
+                <td><strong>{customer.phone || '-'}</strong><span>{customer.email || '-'}</span></td>
+                <td><strong>{customer.vehicle || '-'}</strong><span>{customer.vin ? `VIN ${customer.vin}` : 'No VIN saved'}</span></td>
+                <td><span className="status-pill status-confirmed">{customer.source}</span></td>
+                <td>{customer.leadIds.length} leads · {customer.appointmentIds.length} appointments</td>
+                <td>{date(customer.updatedAt)}</td>
+                <td><button className="delete-btn small" onClick={() => onDelete(customer._id)}>Delete</button></td>
               </tr>
-            ) : (
-              customers.map((customer) => (
-                <tr key={customer.id}>
-                  <td>
-                    <div className="cell-title">{customer.name || '—'}</div>
-                    <div className="cell-sub">{customer.address || 'No address saved'}</div>
-                  </td>
-                  <td>
-                    <div className="cell-title">{customer.phone || '—'}</div>
-                    <div className="cell-sub">{customer.email || '—'}</div>
-                  </td>
-                  <td>
-                    <div className="cell-title">{customer.vehicle || '—'}</div>
-                    <div className="cell-sub">
-                      {[customer.vin ? `VIN ${customer.vin}` : '', customer.plate ? `Plate ${customer.plate}` : ''].filter(Boolean).join(' · ') || 'No vehicle IDs saved'}
-                    </div>
-                  </td>
-                  <td>
-                    <span className="status-pill status-confirmed">{customer.source || 'invoice'}</span>
-                  </td>
-                  <td>{formatDate(customer.updatedAt || customer.created_at)}</td>
-                  <td>
-                    <button className="delete-btn small" onClick={() => onDelete?.(customer)}>
-                      Delete
-                    </button>
-                  </td>
-                </tr>
-              ))
-            )}
+            ))}
+            {!rows.length ? <tr><td className="empty-cell" colSpan="7">No customers found.</td></tr> : null}
           </tbody>
         </table>
       </div>
