@@ -78,6 +78,27 @@ function customerKey(customer) {
     .toLowerCase()
 }
 
+function customerIdentityKey(customer) {
+  const name = String(customer.customerName || customer.name || '').trim().toLowerCase()
+  const phone = String(customer.customerPhone || customer.phone || '').trim().toLowerCase()
+  const email = String(customer.customerEmail || customer.email || '').trim().toLowerCase()
+  const address = String(customer.customerAddress || customer.address || '').trim().toLowerCase()
+
+  if (phone || email) return [name, phone, email].filter(Boolean).join('|')
+  return [name, address].filter(Boolean).join('|')
+}
+
+function vehicleKey(vehicle) {
+  return [
+    vehicle.vehicle,
+    vehicle.vin,
+    vehicle.plate
+  ]
+    .map((value) => String(value || '').trim().toLowerCase())
+    .filter(Boolean)
+    .join('|')
+}
+
 function normalizeCustomer(customer) {
   return {
     id: customer.id || customerKey(customer) || crypto.randomUUID(),
@@ -94,9 +115,14 @@ function normalizeCustomer(customer) {
   }
 }
 
+function formatVehicleTitle(vehicle) {
+  return vehicle.vehicle || [vehicle.vehicle_year, vehicle.vehicle_make, vehicle.vehicle_model].filter(Boolean).join(' ') || 'Unnamed vehicle'
+}
+
 export default function InvoiceGenerator({ customers = [], onCustomerSaved }) {
   const [invoiceView, setInvoiceView] = useState('edit')
   const [selectedCustomerId, setSelectedCustomerId] = useState('')
+  const [vehiclePickerCustomer, setVehiclePickerCustomer] = useState(null)
   const [documentType, setDocumentType] = useState(() => loadDraft()?.documentType || 'invoice')
   const [invoice, setInvoice] = useState(() => loadDraft()?.invoice || newInvoice())
   const [items, setItems] = useState(() => loadDraft()?.items || [newLineItem('part'), newLineItem('labor')])
@@ -110,11 +136,52 @@ export default function InvoiceGenerator({ customers = [], onCustomerSaved }) {
 
   const customerOptions = useMemo(() => {
     const seen = new Map()
+
     customers.map(normalizeCustomer).forEach((customer) => {
-      const key = customerKey(customer)
-      if (key && !seen.has(key)) seen.set(key, customer)
+      const key = customerIdentityKey(customer)
+      if (!key) return
+
+      const existing = seen.get(key) || {
+        id: key,
+        name: customer.name,
+        phone: customer.phone,
+        email: customer.email,
+        address: customer.address,
+        updatedAt: customer.updatedAt,
+        vehicles: []
+      }
+
+      if ((!existing.address && customer.address) || new Date(customer.updatedAt) > new Date(existing.updatedAt || 0)) {
+        existing.name = customer.name || existing.name
+        existing.phone = customer.phone || existing.phone
+        existing.email = customer.email || existing.email
+        existing.address = customer.address || existing.address
+        existing.updatedAt = customer.updatedAt || existing.updatedAt
+      }
+
+      const vehicle = {
+        vehicle: customer.vehicle || '',
+        vin: customer.vin || '',
+        mileage: customer.mileage || '',
+        plate: customer.plate || '',
+        source: customer.source || 'invoice',
+        updatedAt: customer.updatedAt
+      }
+
+      const keyForVehicle = vehicleKey(vehicle)
+      if (keyForVehicle && !existing.vehicles.some((savedVehicle) => vehicleKey(savedVehicle) === keyForVehicle)) {
+        existing.vehicles.push(vehicle)
+      }
+
+      seen.set(key, existing)
     })
-    return [...seen.values()].sort((a, b) => a.name.localeCompare(b.name))
+
+    return [...seen.values()]
+      .map((customer) => ({
+        ...customer,
+        vehicles: customer.vehicles.sort((a, b) => formatVehicleTitle(a).localeCompare(formatVehicleTitle(b)))
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name))
   }, [customers])
 
   function updateInvoice(field, value) {
@@ -139,6 +206,7 @@ export default function InvoiceGenerator({ customers = [], onCustomerSaved }) {
 
   function clearInvoice() {
     setSelectedCustomerId('')
+    setVehiclePickerCustomer(null)
     setInvoice(newInvoice())
     setItems([newLineItem('part'), newLineItem('labor')])
     localStorage.removeItem(DRAFT_KEY)
@@ -155,11 +223,35 @@ export default function InvoiceGenerator({ customers = [], onCustomerSaved }) {
       customerPhone: customer.phone || '',
       customerEmail: customer.email || '',
       customerAddress: customer.address || '',
-      vehicle: customer.vehicle || '',
-      vin: customer.vin || '',
-      mileage: customer.mileage || '',
-      plate: customer.plate || ''
+      vehicle: '',
+      vin: '',
+      mileage: '',
+      plate: ''
     }))
+
+    setVehiclePickerCustomer(customer)
+  }
+
+  function selectVehicle(vehicle) {
+    setInvoice((current) => ({
+      ...current,
+      vehicle: vehicle.vehicle || '',
+      vin: vehicle.vin || '',
+      mileage: vehicle.mileage || '',
+      plate: vehicle.plate || ''
+    }))
+    setVehiclePickerCustomer(null)
+  }
+
+  function addNewVehicle() {
+    setInvoice((current) => ({
+      ...current,
+      vehicle: '',
+      vin: '',
+      mileage: '',
+      plate: ''
+    }))
+    setVehiclePickerCustomer(null)
   }
 
   function saveCustomer() {
@@ -290,7 +382,7 @@ export default function InvoiceGenerator({ customers = [], onCustomerSaved }) {
                 <option value="">Select a customer...</option>
                 {customerOptions.map((customer) => (
                   <option key={customer.id} value={customer.id}>
-                    {[customer.name, customer.vehicle, customer.phone].filter(Boolean).join(' - ')}
+                    {[customer.name, customer.phone, `${customer.vehicles.length} vehicle${customer.vehicles.length === 1 ? '' : 's'}`].filter(Boolean).join(' - ')}
                   </option>
                 ))}
               </select>
@@ -317,6 +409,11 @@ export default function InvoiceGenerator({ customers = [], onCustomerSaved }) {
 
           <div className="invoice-form-section">
             <h3>Vehicle</h3>
+            {selectedCustomerId ? (
+              <button className="ghost-btn small" onClick={() => setVehiclePickerCustomer(customerOptions.find((option) => option.id === selectedCustomerId) || null)}>
+                Choose Attached Vehicle
+              </button>
+            ) : null}
             <div className="invoice-form-grid">
               <label>
                 Vehicle
@@ -523,6 +620,44 @@ export default function InvoiceGenerator({ customers = [], onCustomerSaved }) {
           </footer>
         </article>
       </div>
+
+      {vehiclePickerCustomer ? (
+        <div className="vehicle-picker-backdrop no-print" role="presentation">
+          <div className="vehicle-picker-modal" role="dialog" aria-modal="true" aria-labelledby="vehicle-picker-title">
+            <div className="vehicle-picker-header">
+              <div>
+                <p className="eyebrow">Attached Vehicles</p>
+                <h3 id="vehicle-picker-title">{vehiclePickerCustomer.name || 'Selected customer'}</h3>
+                <p className="muted">Choose a saved vehicle or start a new vehicle for this customer.</p>
+              </div>
+              <button className="ghost-btn small" onClick={() => setVehiclePickerCustomer(null)}>Close</button>
+            </div>
+
+            <div className="vehicle-picker-list">
+              {vehiclePickerCustomer.vehicles.length === 0 ? (
+                <div className="vehicle-picker-empty">No vehicles are attached to this customer yet.</div>
+              ) : (
+                vehiclePickerCustomer.vehicles.map((vehicle) => (
+                  <button
+                    className="vehicle-picker-card"
+                    key={vehicleKey(vehicle)}
+                    onClick={() => selectVehicle(vehicle)}
+                  >
+                    <span>{formatVehicleTitle(vehicle)}</span>
+                    <small>
+                      {[vehicle.vin ? `VIN ${vehicle.vin}` : '', vehicle.plate ? `Plate ${vehicle.plate}` : '', vehicle.mileage ? `${vehicle.mileage} mi` : ''].filter(Boolean).join(' - ') || 'No vehicle IDs saved'}
+                    </small>
+                  </button>
+                ))
+              )}
+            </div>
+
+            <div className="vehicle-picker-actions">
+              <button className="primary-btn" onClick={addNewVehicle}>+ Add New Vehicle</button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </section>
   )
 }

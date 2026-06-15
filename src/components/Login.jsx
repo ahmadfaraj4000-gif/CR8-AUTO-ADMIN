@@ -1,37 +1,54 @@
 import { useState } from 'react'
-import { useAuthActions } from '@convex-dev/auth/react'
+import { supabase } from '../lib/supabase'
 
 export default function Login() {
-  const { signIn } = useAuthActions()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
-  const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
 
-  async function submit(event) {
-    event.preventDefault()
+  async function handleSubmit(e) {
+    e.preventDefault()
     setLoading(true)
     setError('')
-    try {
-      await signIn('password', { email, password, flow: 'signIn' })
-    } catch (err) {
-      setError(err.message || 'Unable to sign in.')
-    } finally {
-      setLoading(false)
-    }
+
+    const { error } = await supabase.auth.signInWithPassword({ email, password })
+
+    if (error) setError(error.message)
+    setLoading(false)
   }
 
   return (
-    <section className="auth-shell">
-      <form className="auth-card" onSubmit={submit}>
-        <p className="eyebrow">Car Craft Autobody</p>
+    <div className="auth-shell">
+      <form className="auth-card" onSubmit={handleSubmit}>
+        <p className="eyebrow">CR8 AUTOS</p>
         <h1>Admin Portal</h1>
-        <p className="muted">Sign in with Convex Auth to manage estimates, appointments, customers, and inventory.</p>
+        <p className="muted">Sign in with your Supabase Auth account.</p>
+
+        <label>Email</label>
+        <input
+          type="email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          placeholder="you@cr8autos.com"
+          required
+        />
+
+        <label>Password</label>
+        <input
+          type="password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          placeholder="••••••••"
+          required
+        />
+
         {error ? <div className="error-box">{error}</div> : null}
-        <label>Email<input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required /></label>
-        <label>Password<input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required /></label>
-        <button disabled={loading}>{loading ? 'Working...' : 'Login'}</button>
+
+        <button type="submit" disabled={loading}>
+          {loading ? 'Signing in...' : 'Sign In'}
+        </button>
       </form>
-    </section>
+    </div>
   )
 }
