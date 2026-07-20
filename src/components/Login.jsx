@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { supabase } from '../lib/supabase'
+import logo from '../assets/logo.png'
 
 export default function Login() {
   const [email, setEmail] = useState('')
@@ -21,6 +22,9 @@ export default function Login() {
   return (
     <div className="auth-shell">
       <form className="auth-card" onSubmit={handleSubmit}>
+        <div className="auth-brand">
+          <img src={logo} alt="CR8 Autos" />
+        </div>
         <p className="eyebrow">CR8 AUTOS</p>
         <h1>Admin Portal</h1>
         <p className="muted">Sign in with your Supabase Auth account.</p>

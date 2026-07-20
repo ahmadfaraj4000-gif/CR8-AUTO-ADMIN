@@ -13,6 +13,35 @@ import logo from './assets/logo.png'
 const CUSTOMER_KEY = 'cr8CustomerDatabase'
 const DELETED_CUSTOMER_KEY = 'cr8DeletedCustomers'
 
+function NavIcon({ name }) {
+  const common = {
+    viewBox: '0 0 24 24',
+    fill: 'none',
+    stroke: 'currentColor',
+    strokeWidth: 1.8,
+    strokeLinecap: 'round',
+    strokeLinejoin: 'round',
+    focusable: 'false'
+  }
+
+  if (name === 'appointments') {
+    return <svg {...common}><rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 4V2h6v2M8.5 12l2 2 4.5-4.5M9 18h6"/></svg>
+  }
+  if (name === 'calendar') {
+    return <svg {...common}><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18M8 14h.01M12 14h.01M16 14h.01M8 18h.01M12 18h.01"/></svg>
+  }
+  if (name === 'applications') {
+    return <svg {...common}><path d="M7 3h7l4 4v14H7zM14 3v5h5M10 12h5M10 16h5"/><path d="M4 7v14h10"/></svg>
+  }
+  if (name === 'invoices') {
+    return <svg {...common}><path d="M6 3h12v18l-3-2-3 2-3-2-3 2zM9 8h6M9 12h6M9 16h3"/></svg>
+  }
+  if (name === 'customers') {
+    return <svg {...common}><path d="M16 20v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 10a4 4 0 1 0 0-8 4 4 0 0 0 0 8M22 20v-2a4 4 0 0 0-3-3.87M16 2.13a4 4 0 0 1 0 7.75"/></svg>
+  }
+  return <svg {...common}><path d="M4 7h3l1.5-2h7L17 7h3a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2z"/><circle cx="12" cy="13" r="4"/><path d="M18.5 10h.01"/></svg>
+}
+
 function formatRole(role) {
   return (role || 'viewer').replaceAll('_', ' ')
 }
@@ -147,6 +176,7 @@ export default function App() {
   const [error, setError] = useState('')
   const [showNewModal, setShowNewModal] = useState(false)
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
 
   function selectTab(tab) {
     setActiveTab(tab)
@@ -635,16 +665,28 @@ export default function App() {
   }
 
   return (
-    <div className="app-shell">
+    <div className={`app-shell${sidebarCollapsed ? ' sidebar-is-collapsed' : ''}`}>
       <aside className="sidebar">
         <div className="sidebar-brand">
           <img src={logo} alt="CR8 Autos" className="sidebar-logo" />
+          <span className="sidebar-brand-divider" aria-hidden="true" />
           <div className="sidebar-brand-copy">
             <p className="eyebrow">CR8 AUTOS</p>
             <h2>Shop Command</h2>
             <p className="muted">Owner operations dashboard</p>
           </div>
         </div>
+
+        <button
+          type="button"
+          className="sidebar-collapse-toggle"
+          aria-label={sidebarCollapsed ? 'Expand admin navigation' : 'Collapse admin navigation'}
+          aria-expanded={!sidebarCollapsed}
+          onClick={() => setSidebarCollapsed((collapsed) => !collapsed)}
+        >
+          <span aria-hidden="true">{sidebarCollapsed ? '›' : '‹'}</span>
+          <span className="collapse-label">Collapse menu</span>
+        </button>
 
         <button
           type="button"
@@ -660,23 +702,23 @@ export default function App() {
 
         <div id="admin-navigation" className={`sidebar-collapsible${mobileNavOpen ? ' open' : ''}`}>
           <nav className="side-nav" aria-label="Admin sections">
-            <button className={activeTab === 'appointments' ? 'active' : ''} onClick={() => selectTab('appointments')}>
-              Appointments
+            <button title="Appointments" className={activeTab === 'appointments' ? 'active' : ''} onClick={() => selectTab('appointments')}>
+              <span className="tab-icon" aria-hidden="true"><NavIcon name="appointments" /></span><span className="tab-label">Appointments</span>
             </button>
-            <button className={activeTab === 'calendar' ? 'active' : ''} onClick={() => selectTab('calendar')}>
-              Calendar
+            <button title="Calendar" className={activeTab === 'calendar' ? 'active' : ''} onClick={() => selectTab('calendar')}>
+              <span className="tab-icon" aria-hidden="true"><NavIcon name="calendar" /></span><span className="tab-label">Calendar</span>
             </button>
-            <button className={activeTab === 'applications' ? 'active' : ''} onClick={() => selectTab('applications')}>
-              Applications
+            <button title="Applications" className={activeTab === 'applications' ? 'active' : ''} onClick={() => selectTab('applications')}>
+              <span className="tab-icon" aria-hidden="true"><NavIcon name="applications" /></span><span className="tab-label">Applications</span>
             </button>
-            <button className={activeTab === 'invoices' ? 'active' : ''} onClick={() => selectTab('invoices')}>
-              Invoices
+            <button title="Invoices" className={activeTab === 'invoices' ? 'active' : ''} onClick={() => selectTab('invoices')}>
+              <span className="tab-icon" aria-hidden="true"><NavIcon name="invoices" /></span><span className="tab-label">Invoices</span>
             </button>
-            <button className={activeTab === 'customers' ? 'active' : ''} onClick={() => selectTab('customers')}>
-              Customers
+            <button title="Customers" className={activeTab === 'customers' ? 'active' : ''} onClick={() => selectTab('customers')}>
+              <span className="tab-icon" aria-hidden="true"><NavIcon name="customers" /></span><span className="tab-label">Customers</span>
             </button>
-            <button className={activeTab === 'leads' ? 'active' : ''} onClick={() => selectTab('leads')}>
-              Estimate Leads
+            <button title="Estimate Leads" className={activeTab === 'leads' ? 'active' : ''} onClick={() => selectTab('leads')}>
+              <span className="tab-icon" aria-hidden="true"><NavIcon name="leads" /></span><span className="tab-label">Estimate Leads</span>
             </button>
           </nav>
 
