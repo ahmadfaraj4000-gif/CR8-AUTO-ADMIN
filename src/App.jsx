@@ -8,6 +8,7 @@ import NewAppointmentModal from './components/NewAppointmentModal'
 import InvoiceGenerator from './components/InvoiceGenerator'
 import EstimateLeads from './components/EstimateLeads'
 import CustomerDatabase from './components/CustomerDatabase'
+import logo from './assets/logo.png'
 
 const CUSTOMER_KEY = 'cr8CustomerDatabase'
 const DELETED_CUSTOMER_KEY = 'cr8DeletedCustomers'
@@ -145,6 +146,13 @@ export default function App() {
   const [search, setSearch] = useState('')
   const [error, setError] = useState('')
   const [showNewModal, setShowNewModal] = useState(false)
+  const [mobileNavOpen, setMobileNavOpen] = useState(false)
+
+  function selectTab(tab) {
+    setActiveTab(tab)
+    setSearch('')
+    setMobileNavOpen(false)
+  }
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
@@ -629,38 +637,55 @@ export default function App() {
   return (
     <div className="app-shell">
       <aside className="sidebar">
-        <div>
-          <p className="eyebrow">CR8 AUTOS</p>
-          <h2>Shop Command</h2>
-          <p className="muted">Owner operations dashboard</p>
+        <div className="sidebar-brand">
+          <img src={logo} alt="CR8 Autos" className="sidebar-logo" />
+          <div className="sidebar-brand-copy">
+            <p className="eyebrow">CR8 AUTOS</p>
+            <h2>Shop Command</h2>
+            <p className="muted">Owner operations dashboard</p>
+          </div>
         </div>
 
-        <nav className="side-nav">
-          <button className={activeTab === 'appointments' ? 'active' : ''} onClick={() => setActiveTab('appointments')}>
-            Appointments
-          </button>
-          <button className={activeTab === 'calendar' ? 'active' : ''} onClick={() => setActiveTab('calendar')}>
-            Calendar
-          </button>
-          <button className={activeTab === 'applications' ? 'active' : ''} onClick={() => setActiveTab('applications')}>
-            Applications
-          </button>
-          <button className={activeTab === 'invoices' ? 'active' : ''} onClick={() => setActiveTab('invoices')}>
-            Invoices
-          </button>
-          <button className={activeTab === 'customers' ? 'active' : ''} onClick={() => setActiveTab('customers')}>
-            Customers
-          </button>
-          <button className={activeTab === 'leads' ? 'active' : ''} onClick={() => setActiveTab('leads')}>
-            Estimate Leads
-          </button>
-        </nav>
+        <button
+          type="button"
+          className="mobile-nav-toggle"
+          aria-expanded={mobileNavOpen}
+          aria-controls="admin-navigation"
+          onClick={() => setMobileNavOpen((open) => !open)}
+        >
+          <span className="mobile-nav-icon" aria-hidden="true">☰</span>
+          <span>{mobileNavOpen ? 'Collapse' : 'Expand menu'}</span>
+        </button>
+        <span className="mobile-role-pill">{formatRole(profile?.role)}</span>
 
-        <div className="profile-box">
-          <div className="profile-line"><strong>{profile?.full_name || session.user.email}</strong></div>
-          <div className="profile-line">{session.user.email}</div>
-          <div className="profile-line role-pill">{formatRole(profile?.role)}</div>
-          <button className="ghost-btn" onClick={signOut}>Sign out</button>
+        <div id="admin-navigation" className={`sidebar-collapsible${mobileNavOpen ? ' open' : ''}`}>
+          <nav className="side-nav" aria-label="Admin sections">
+            <button className={activeTab === 'appointments' ? 'active' : ''} onClick={() => selectTab('appointments')}>
+              Appointments
+            </button>
+            <button className={activeTab === 'calendar' ? 'active' : ''} onClick={() => selectTab('calendar')}>
+              Calendar
+            </button>
+            <button className={activeTab === 'applications' ? 'active' : ''} onClick={() => selectTab('applications')}>
+              Applications
+            </button>
+            <button className={activeTab === 'invoices' ? 'active' : ''} onClick={() => selectTab('invoices')}>
+              Invoices
+            </button>
+            <button className={activeTab === 'customers' ? 'active' : ''} onClick={() => selectTab('customers')}>
+              Customers
+            </button>
+            <button className={activeTab === 'leads' ? 'active' : ''} onClick={() => selectTab('leads')}>
+              Estimate Leads
+            </button>
+          </nav>
+
+          <div className="profile-box">
+            <div className="profile-line"><strong>{profile?.full_name || session.user.email}</strong></div>
+            <div className="profile-line profile-email">{session.user.email}</div>
+            <div className="profile-line role-pill">{formatRole(profile?.role)}</div>
+            <button className="ghost-btn" onClick={signOut}>Sign out</button>
+          </div>
         </div>
       </aside>
 

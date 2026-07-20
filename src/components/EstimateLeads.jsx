@@ -68,16 +68,6 @@ function normalizeArray(value) {
   return [value]
 }
 
-function formatBoolean(value) {
-  return value ? 'Yes' : 'No'
-}
-
-function formatPercent(value) {
-  const number = Number(value || 0)
-  if (!number) return '—'
-  return `${Math.round(number * 100)}%`
-}
-
 function phoneLink(phone) {
   if (!phone) return null
   return `tel:${phone.replace(/[^\d+]/g, '')}`
@@ -196,14 +186,14 @@ export default function EstimateLeads({ leads = [], onSaved, onConverted }) {
     setConverting(true)
     setError('')
 
-    const aiSummary = getAiField(lead, 'repair_summary', '')
+    const reviewSummary = getAiField(lead, 'repair_summary', '')
     const pricingFactors = normalizeArray(getAiField(lead, 'pricing_factors', []))
     const inspectionFlags = normalizeArray(getAiField(lead, 'inspection_flags', []))
     const recommendedNextStep = getAiField(lead, 'recommended_next_step', '')
     const appointmentNotes = [
-      'Converted from AI Photo Estimate lead.',
+      'Converted from online photo estimate submission.',
       lead.description ? `Customer description: ${lead.description}` : '',
-      aiSummary ? `AI summary: ${aiSummary}` : '',
+      reviewSummary ? `Photo review notes: ${reviewSummary}` : '',
       lead.estimate_range ? `Rough range: ${lead.estimate_range}` : '',
       lead.vin ? `VIN: ${lead.vin}` : '',
       lead.damage_area || lead.damage_type || lead.severity
@@ -239,7 +229,7 @@ export default function EstimateLeads({ leads = [], onSaved, onConverted }) {
           phone: lead.phone || '',
           email: lead.email || '',
           vehicle: lead.vehicle || '',
-          service: `AI Photo Estimate - ${lead.damage_area || lead.damage_type || 'Collision Review'}`,
+          service: `Online Photo Estimate - ${lead.damage_area || lead.damage_type || 'Collision Review'}`,
           appointment_date: appointmentDate,
           appointment_time: appointmentTime,
           notes: appointmentNotes,
@@ -362,9 +352,6 @@ export default function EstimateLeads({ leads = [], onSaved, onConverted }) {
                       <span className="days-badge warning">
                         Severity: {lead.severity || getAiField(lead, 'severity', '—')}
                       </span>
-                      <span className="days-badge">
-                        AI: {getAiField(lead, 'backend', 'local')}
-                      </span>
                       {parts.length ? <span className="tracking-detail">Parts: {parts.join(', ')}</span> : null}
                       {damageTypes.length ? <span className="tracking-detail">Type: {damageTypes.join(', ')}</span> : null}
                     </div>
@@ -460,8 +447,8 @@ export default function EstimateLeads({ leads = [], onSaved, onConverted }) {
 
             <div className="estimate-ai-panel">
               <div>
-                <p className="eyebrow">AI Review</p>
-                <h4>Preliminary Damage Summary</h4>
+                <p className="eyebrow">Photo Submission</p>
+                <h4>Customer Description</h4>
               </div>
 
               <p className="muted">
@@ -480,32 +467,28 @@ export default function EstimateLeads({ leads = [], onSaved, onConverted }) {
 
             <div className="estimate-ai-panel">
               <div>
-                <p className="eyebrow">Estimate Breakdown</p>
-                <h4>Pricing Factors & Flags</h4>
+                <p className="eyebrow">Submission Review</p>
+                <h4>Review Details</h4>
               </div>
 
               <div className="estimate-breakdown-grid">
-                <div><strong>Backend:</strong> {getAiField(selectedLead, 'backend', '—')}</div>
-                <div><strong>YOLO Used:</strong> {formatBoolean(Boolean(getAiField(selectedLead, 'yolo_used', false)))}</div>
                 <div><strong>Photo Count:</strong> {getAiField(selectedLead, 'photo_count', normalizeArray(selectedLead.photo_urls).length)}</div>
-                <div><strong>Confidence:</strong> {formatPercent(getAiField(selectedLead, 'confidence', 0))}</div>
-                <div><strong>Estimate Low:</strong> {getAiField(selectedLead, 'estimate_low', '—')}</div>
-                <div><strong>Estimate High:</strong> {getAiField(selectedLead, 'estimate_high', '—')}</div>
+                <div><strong>Review Status:</strong> {formatStatus(selectedLead.status)}</div>
               </div>
 
               <div className="estimate-factor-list">
-                <strong>Pricing factors</strong>
+                <strong>Repair considerations</strong>
                 {normalizeArray(getAiField(selectedLead, 'pricing_factors', [])).length ? (
                   normalizeArray(getAiField(selectedLead, 'pricing_factors', [])).map((factor) => (
                     <span key={factor}>{factor}</span>
                   ))
                 ) : (
-                  <span>No pricing factors saved.</span>
+                  <span>The CR8 Autos team will add repair notes after reviewing the photos.</span>
                 )}
               </div>
 
               <div className="estimate-factor-list warning">
-                <strong>Inspection flags</strong>
+                <strong>Inspection notes</strong>
                 {normalizeArray(getAiField(selectedLead, 'inspection_flags', [])).length ? (
                   normalizeArray(getAiField(selectedLead, 'inspection_flags', [])).map((flag) => (
                     <span key={flag}>{flag}</span>
