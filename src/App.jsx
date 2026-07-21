@@ -121,6 +121,14 @@ function customerKey(customer) {
     .toLowerCase()
 }
 
+function normalizedPhone(value) {
+  return String(value || '').replace(/\D/g, '')
+}
+
+function normalizedEmail(value) {
+  return String(value || '').trim().toLowerCase()
+}
+
 function normalizeCustomer(customer) {
   return {
     id: customer.id || customerKey(customer) || crypto.randomUUID(),
@@ -137,9 +145,24 @@ function normalizeCustomer(customer) {
     plate: customer.plate || '',
     source: customer.source || 'invoice',
     notes: customer.notes || '',
+    sourceTable: customer.sourceTable || '',
+    sourceId: customer.sourceId || '',
+    photo_urls: customer.photo_urls || [],
     updatedAt: customer.updatedAt || customer.updated_at || customer.created_at || new Date().toISOString(),
     isSupabaseCustomer: Boolean(customer.isSupabaseCustomer)
   }
+}
+
+function normalizeArray(value) {
+  if (Array.isArray(value)) return value
+  if (!value) return []
+  return [value]
+}
+
+function getEstimatePhotoPath(url) {
+  const marker = '/storage/v1/object/public/estimate-lead-photos/'
+  if (!url || !url.includes(marker)) return null
+  return decodeURIComponent(url.split(marker)[1] || '').split('?')[0]
 }
 
 function dedupeCustomers(customers) {
@@ -316,8 +339,35 @@ export default function App() {
 
     setSupabaseCustomers((data || []).map((customer) => normalizeCustomer({
       ...customer,
+      sourceTable: 'customers',
+      sourceId: customer.id,
       isSupabaseCustomer: true
     })))
+  }
+
+  async function deleteApplication(application) {
+    if (!application?.id) return
+
+    const confirmed = window.confirm(
+      `Delete ${application.name || 'this application'} permanently from Supabase? This cannot be undone.`
+    )
+    if (!confirmed) return
+
+    setError('')
+    const { error: deleteError } = await supabase
+      .from('job_applications')
+      .delete()
+      .eq('id', application.id)
+      .select('id')
+      .single()
+
+    if (deleteError) {
+      setError(deleteError.message)
+      return
+    }
+
+    setSelectedApplication(null)
+    await loadApplications()
   }
 
   async function handleEstimateConverted() {
@@ -435,33 +485,51 @@ export default function App() {
   }
 
   async function deleteCustomer(customer) {
-    const records = Array.isArray(customer.masterRecords) && customer.masterRecords.length > 0
+    const selectedRecords = Array.isArray(customer.masterRecords) && customer.masterRecords.length > 0
       ? customer.masterRecords
       : [customer]
+
+    const phones = new Set(selectedRecords.map((record) => normalizedPhone(record.phone)).filter(Boolean))
+    const emails = new Set(selectedRecords.map((record) => normalizedEmail(record.email)).filter(Boolean))
+    const relatedRecords = customers.filter((record) =>
+      (normalizedPhone(record.phone) && phones.has(normalizedPhone(record.phone))) ||
+      (normalizedEmail(record.email) && emails.has(normalizedEmail(record.email)))
+    )
+    const records = [...selectedRecords, ...relatedRecords].filter((record, index, all) => {
+      const sourceKey = `${record.sourceTable || 'local'}:${record.sourceId || record.id}`
+      return all.findIndex((candidate) => `${candidate.sourceTable || 'local'}:${candidate.sourceId || candidate.id}` === sourceKey) === index
+    })
 
     const keys = records.map(customerKey).filter(Boolean)
     if (!keys.length) return
 
-    const confirmed = window.confirm(`Delete ${customer.name || customer.phone || 'this customer'} and its attached vehicles from the customer database?`)
+    const customerIds = records.filter((record) => record.sourceTable === 'customers').map((record) => String(record.sourceId || record.id)).filter(Boolean)
+    const bookingIds = records.filter((record) => record.sourceTable === 'bookings').map((record) => String(record.sourceId)).filter(Boolean)
+    const estimateLeadIds = records.filter((record) => record.sourceTable === 'estimate_leads').map((record) => String(record.sourceId)).filter(Boolean)
+    const photoPaths = [...new Set(records
+      .filter((record) => record.sourceTable === 'estimate_leads')
+      .flatMap((record) => normalizeArray(record.photo_urls))
+      .map(getEstimatePhotoPath)
+      .filter(Boolean))]
+
+    const confirmed = window.confirm(
+      `Permanently delete ${customer.name || customer.phone || 'this customer'} from Supabase, including ${bookingIds.length} appointment(s) and ${estimateLeadIds.length} estimate lead(s)? This cannot be undone.`
+    )
     if (!confirmed) return
 
-    const supabaseIds = records
-      .filter((record) => record.isSupabaseCustomer)
-      .map((record) => record.id)
-      .filter(Boolean)
+    setError('')
+    const { error: deleteError } = await supabase.rpc('admin_delete_customer_everywhere', {
+      p_customer_ids: customerIds,
+      p_booking_ids: bookingIds,
+      p_estimate_lead_ids: estimateLeadIds
+    })
 
-    if (supabaseIds.length > 0) {
-      const { error } = await supabase
-        .from('customers')
-        .delete()
-        .in('id', supabaseIds)
-
-      if (error) {
-        setError(error.message)
-        return
-      }
-
-      await loadCustomers()
+    if (deleteError) {
+      const needsInstall = /admin_delete_customer_everywhere|schema cache|function/i.test(deleteError.message)
+      setError(needsInstall
+        ? 'The permanent-delete database function is not installed yet. Run supabase-admin-delete-functions.sql in the Supabase SQL Editor, then try again.'
+        : deleteError.message)
+      return
     }
 
     setSavedCustomers((current) => {
@@ -471,10 +539,22 @@ export default function App() {
     })
 
     setDeletedCustomerKeys((current) => {
-      const next = Array.from(new Set([...current, ...keys]))
+      const next = current.filter((key) => !keys.includes(key))
       localStorage.setItem(DELETED_CUSTOMER_KEY, JSON.stringify(next))
       return next
     })
+
+    await Promise.all([loadCustomers(), loadBookings(), loadEstimateLeads()])
+
+    if (photoPaths.length) {
+      const { error: photoError } = await supabase.storage
+        .from('estimate-lead-photos')
+        .remove(photoPaths)
+
+      if (photoError) {
+        setError(`Customer records were deleted, but Supabase Storage could not remove every estimate photo: ${photoError.message}`)
+      }
+    }
   }
 
   const activeBookings = useMemo(
@@ -587,6 +667,8 @@ export default function App() {
   const customers = useMemo(() => {
     const bookingCustomers = bookings.map((booking) => ({
       id: `booking-${booking.id}`,
+      sourceId: booking.id,
+      sourceTable: 'bookings',
       name: booking.name || '',
       phone: booking.phone || '',
       email: booking.email || '',
@@ -597,6 +679,8 @@ export default function App() {
 
     const leadCustomers = estimateLeads.map((lead) => ({
       id: `lead-${lead.id}`,
+      sourceId: lead.id,
+      sourceTable: 'estimate_leads',
       name: lead.name || '',
       phone: lead.phone || '',
       email: lead.email || '',
@@ -606,13 +690,16 @@ export default function App() {
       vehicle_make: lead.vehicle_make || '',
       vehicle_model: lead.vehicle_model || '',
       vin: lead.vin || '',
+      photo_urls: lead.photo_urls || [],
       source: 'estimate lead',
       updatedAt: lead.updated_at || lead.created_at
     }))
 
-    return dedupeCustomers([...supabaseCustomers, ...savedCustomers, ...bookingCustomers, ...leadCustomers])
-      .filter((customer) => !deletedCustomerKeys.includes(customerKey(customer)))
-  }, [bookings, estimateLeads, supabaseCustomers, savedCustomers, deletedCustomerKeys])
+    return [...supabaseCustomers, ...savedCustomers, ...bookingCustomers, ...leadCustomers]
+      .map(normalizeCustomer)
+      .filter((customer) => customerKey(customer))
+      .sort((a, b) => a.name.localeCompare(b.name))
+  }, [bookings, estimateLeads, supabaseCustomers, savedCustomers])
 
   const filteredCustomers = useMemo(() => {
     const term = search.trim().toLowerCase()
@@ -990,6 +1077,15 @@ export default function App() {
             <div className="placeholder-card">
               <label>Applicant Message</label>
               <p>{selectedApplication.message || 'No message provided.'}</p>
+            </div>
+
+            <div className="modal-actions">
+              <button className="delete-btn" onClick={() => deleteApplication(selectedApplication)}>
+                Delete permanently
+              </button>
+              <button className="ghost-btn" onClick={() => setSelectedApplication(null)}>
+                Close
+              </button>
             </div>
           </div>
         </div>

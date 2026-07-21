@@ -116,6 +116,8 @@ export default function AppointmentModal({ booking, onClose, onSaved }) {
       .from('bookings')
       .delete()
       .eq('id', booking.id)
+      .select('id')
+      .single()
 
     if (error) {
       setError(error.message)

@@ -349,6 +349,186 @@ code {
     max-width: none;
   }
 }
+
+/* ==========================================================
+   ADMIN CONTROL CONSISTENCY
+   Uniform controls and deliberate action hierarchy.
+   ========================================================== */
+.modal-card input,
+.modal-card select,
+.modal-card textarea,
+.estimate-ai-panel select,
+.estimate-ai-panel textarea {
+  width: 100%;
+  min-height: 50px;
+  padding: 12px 14px !important;
+  border-radius: 6px !important;
+  font-size: 1rem;
+  line-height: 1.35;
+}
+
+.modal-card textarea,
+.estimate-ai-panel textarea {
+  min-height: 128px;
+  resize: vertical;
+}
+
+.estimate-ai-panel label,
+.appointment-form-grid label > span {
+  display: block;
+  margin: 0 0 7px;
+  color: #4f544f !important;
+  font-size: .76rem;
+  font-weight: 800;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+}
+
+.estimate-quick-actions {
+  display: grid !important;
+  flex: 0 0 min(440px, 38vw);
+  width: min(440px, 38vw);
+  gap: 9px !important;
+}
+
+.quick-action-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.quick-action-row > * {
+  display: inline-flex;
+  width: 100%;
+  min-width: 0;
+  min-height: 46px;
+  align-items: center;
+  justify-content: center;
+  padding: 9px 10px !important;
+  border-radius: 5px !important;
+  font-size: .75rem !important;
+  line-height: 1.15;
+  text-align: center;
+  text-decoration: none;
+}
+
+.quick-action-row-workflow > :last-child {
+  grid-column: auto;
+}
+
+.estimate-modal-actions {
+  display: grid !important;
+  gap: 10px !important;
+  padding-top: 4px;
+}
+
+.estimate-modal-action-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.estimate-modal-action-row button {
+  width: 100%;
+  min-height: 50px;
+  border-radius: 6px !important;
+  padding: 12px 16px !important;
+}
+
+.estimate-modal-actions .secondary-actions {
+  padding-bottom: 10px;
+  border-bottom: 1px solid #d7dad5;
+}
+
+.estimate-modal-actions .ghost-btn {
+  background: #ffffff !important;
+  color: #252825 !important;
+  border: 1px solid #bfc4bd !important;
+}
+
+.invoice-action-buttons {
+  display: grid !important;
+  width: min(100%, 560px);
+  gap: 10px !important;
+}
+
+.invoice-action-row {
+  display: grid;
+  gap: 10px;
+}
+
+.document-type-actions {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.invoice-workflow-actions {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.invoice-action-row button {
+  width: 100%;
+  min-height: 48px;
+  margin: 0;
+  padding: 10px 12px !important;
+  border-radius: 5px !important;
+  line-height: 1.1;
+}
+
+.new-appointment-modal {
+  width: min(820px, 100%);
+}
+
+.appointment-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 15px 14px;
+}
+
+.appointment-form-grid label {
+  min-width: 0;
+  margin: 0;
+}
+
+.appointment-form-wide {
+  grid-column: 1 / -1;
+}
+
+.new-appointment-modal > textarea {
+  min-height: 140px;
+}
+
+@media (max-width: 1050px) {
+  .command-card {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .estimate-quick-actions {
+    width: 100%;
+    flex-basis: auto;
+  }
+}
+
+@media (max-width: 700px) {
+  .quick-action-row,
+  .invoice-workflow-actions {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .quick-action-row-primary > :first-child,
+  .quick-action-row-workflow > :last-child {
+    grid-column: 1 / -1;
+  }
+
+  .appointment-form-grid,
+  .estimate-modal-action-row {
+    grid-template-columns: 1fr;
+  }
+
+  .appointment-form-wide {
+    grid-column: auto;
+  }
+}
 .calendar-legend{
   display:flex;
   flex-wrap:wrap;
@@ -3210,6 +3390,20 @@ tbody td { color: #222422; }
   width: 100%;
   aspect-ratio: 4 / 3;
   object-fit: cover;
+}
+
+/* Final layout ownership for the rebuilt action groups. */
+.estimate-quick-actions,
+.estimate-modal-actions {
+  display: grid !important;
+  grid-template-columns: 1fr !important;
+}
+
+@media (max-width: 900px) {
+  .estimate-quick-actions {
+    width: 100% !important;
+    flex-basis: auto !important;
+  }
 }
 
 /* ===== FINAL LIGHT-THEME PRECEDENCE ===== */

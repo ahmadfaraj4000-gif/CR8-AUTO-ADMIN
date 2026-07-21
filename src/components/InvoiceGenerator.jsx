@@ -314,36 +314,27 @@ export default function InvoiceGenerator({ customers = [], onCustomerSaved }) {
         </div>
 
         <div className="invoice-action-buttons">
-          <button
-            className={documentType === 'invoice' ? 'primary-btn' : 'ghost-btn'}
-            onClick={() => setDocumentType('invoice')}
-          >
-            Invoice
-          </button>
+          <div className="invoice-action-row document-type-actions" aria-label="Document type">
+            <button
+              className={documentType === 'invoice' ? 'primary-btn' : 'ghost-btn'}
+              onClick={() => setDocumentType('invoice')}
+            >
+              Invoice
+            </button>
+            <button
+              className={documentType === 'estimate' ? 'primary-btn' : 'ghost-btn'}
+              onClick={() => setDocumentType('estimate')}
+            >
+              Estimate
+            </button>
+          </div>
 
-          <button
-            className={documentType === 'estimate' ? 'primary-btn' : 'ghost-btn'}
-            onClick={() => setDocumentType('estimate')}
-          >
-            Estimate
-          </button>
-
-          <button
-            className={invoiceView === 'edit' ? 'primary-btn' : 'ghost-btn'}
-            onClick={() => setInvoiceView('edit')}
-          >
-            Edit
-          </button>
-
-          <button
-            className={invoiceView === 'preview' ? 'primary-btn' : 'ghost-btn'}
-            onClick={() => setInvoiceView('preview')}
-          >
-            Preview
-          </button>
-
-          <button className="ghost-btn" onClick={clearInvoice}>Clear</button>
-          <button className="primary-btn" onClick={() => { saveCustomer(); setInvoiceView('preview'); setTimeout(() => window.print(), 80) }}>Print {documentLabel}</button>
+          <div className="invoice-action-row invoice-workflow-actions" aria-label="Document actions">
+            <button className={invoiceView === 'edit' ? 'primary-btn' : 'ghost-btn'} onClick={() => setInvoiceView('edit')}>Edit</button>
+            <button className={invoiceView === 'preview' ? 'primary-btn' : 'ghost-btn'} onClick={() => setInvoiceView('preview')}>Preview</button>
+            <button className="ghost-btn" onClick={clearInvoice}>Clear</button>
+            <button className="primary-btn" onClick={() => { saveCustomer(); setInvoiceView('preview'); setTimeout(() => window.print(), 80) }}>Print {documentLabel}</button>
+          </div>
         </div>
       </div>
 

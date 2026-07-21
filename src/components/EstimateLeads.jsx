@@ -84,6 +84,13 @@ function getEstimatePhotoPath(url) {
   return decodeURIComponent(url.split(marker)[1] || '').split('?')[0]
 }
 
+function notesWithSubmissionDetails(lead) {
+  const savedNotes = String(lead.admin_notes || '').trim()
+  const vin = String(lead.vin || '').trim()
+  if (!vin || savedNotes.toLowerCase().includes(vin.toLowerCase())) return savedNotes
+  return [`VIN: ${vin}`, savedNotes].filter(Boolean).join('\n\n')
+}
+
 export default function EstimateLeads({ leads = [], onSaved, onConverted }) {
   const [selectedLead, setSelectedLead] = useState(null)
   const [saving, setSaving] = useState(false)
@@ -105,7 +112,7 @@ export default function EstimateLeads({ leads = [], onSaved, onConverted }) {
   function openLead(lead) {
     setSelectedLead(lead)
     setStatus(lead.status || 'new')
-    setAdminNotes(lead.admin_notes || '')
+    setAdminNotes(notesWithSubmissionDetails(lead))
     setError('')
   }
 
@@ -147,15 +154,31 @@ export default function EstimateLeads({ leads = [], onSaved, onConverted }) {
     setDeleting(true)
     setError('')
 
+    const photoPaths = normalizeArray(selectedLead.photo_urls)
+      .map(getEstimatePhotoPath)
+      .filter(Boolean)
+
     const { error } = await supabase
       .from('estimate_leads')
       .delete()
       .eq('id', selectedLead.id)
+      .select('id')
+      .single()
 
     if (error) {
       setError(error.message)
       setDeleting(false)
       return
+    }
+
+    if (photoPaths.length) {
+      const { error: photoError } = await supabase.storage
+        .from('estimate-lead-photos')
+        .remove(photoPaths)
+
+      if (photoError) {
+        window.alert(`The estimate lead was deleted, but its uploaded photos could not all be removed from Supabase Storage: ${photoError.message}`)
+      }
     }
 
     setDeleting(false)
@@ -248,6 +271,19 @@ export default function EstimateLeads({ leads = [], onSaved, onConverted }) {
       .map(getEstimatePhotoPath)
       .filter(Boolean)
 
+    const { error: leadError } = await supabase
+      .from('estimate_leads')
+      .delete()
+      .eq('id', lead.id)
+      .select('id')
+      .single()
+
+    if (leadError) {
+      setError(leadError.message)
+      setConverting(false)
+      return
+    }
+
     if (photoPaths.length) {
       const { error: photoError } = await supabase.storage
         .from('estimate-lead-photos')
@@ -256,17 +292,6 @@ export default function EstimateLeads({ leads = [], onSaved, onConverted }) {
       if (photoError) {
         console.warn('Converted estimate lead, but photo cleanup failed:', photoError)
       }
-    }
-
-    const { error: leadError } = await supabase
-      .from('estimate_leads')
-      .delete()
-      .eq('id', lead.id)
-
-    if (leadError) {
-      setError(leadError.message)
-      setConverting(false)
-      return
     }
 
     setConverting(false)
@@ -379,33 +404,32 @@ export default function EstimateLeads({ leads = [], onSaved, onConverted }) {
                   </div>
                 </div>
 
-                <div className="quick-actions">
-                  {lead.phone ? (
-                    <>
-                      <a className="ghost-btn small" href={phoneLink(lead.phone)}>Call</a>
-                      <a className="ghost-btn small" href={smsLink(lead.phone)}>Text</a>
-                    </>
-                  ) : null}
-
-                  <button className="ghost-btn small" onClick={() => openLead(lead)}>
-                    Open
-                  </button>
-
-                  {lead.status !== 'contacted' ? (
-                    <button className="ghost-btn small" onClick={() => quickStatus(lead, 'contacted')}>
-                      Contacted
+                <div className="quick-actions estimate-quick-actions">
+                  <div className="quick-action-row quick-action-row-primary">
+                    <button className="primary-btn small" onClick={() => openLead(lead)}>
+                      Open Details
                     </button>
-                  ) : null}
+                    {lead.phone ? <a className="ghost-btn small" href={phoneLink(lead.phone)}>Call</a> : null}
+                    {lead.phone ? <a className="ghost-btn small" href={smsLink(lead.phone)}>Text</a> : null}
+                  </div>
 
-                  {lead.status !== 'booked' ? (
-                    <button className="primary-btn small" onClick={() => quickStatus(lead, 'booked')}>
-                      Booked
+                  <div className="quick-action-row quick-action-row-workflow">
+                    {lead.status !== 'contacted' ? (
+                      <button className="ghost-btn small" onClick={() => quickStatus(lead, 'contacted')}>
+                        Mark Contacted
+                      </button>
+                    ) : null}
+
+                    {lead.status !== 'booked' ? (
+                      <button className="ghost-btn small" onClick={() => quickStatus(lead, 'booked')}>
+                        Mark Booked
+                      </button>
+                    ) : null}
+
+                    <button className="success-btn small" onClick={() => convertToAppointment(lead)} disabled={converting}>
+                      Convert to Appointment
                     </button>
-                  ) : null}
-
-                  <button className="success-btn small" onClick={() => convertToAppointment(lead)} disabled={converting}>
-                    Convert
-                  </button>
+                  </div>
                 </div>
               </article>
             )
@@ -435,6 +459,7 @@ export default function EstimateLeads({ leads = [], onSaved, onConverted }) {
               <div><strong>Email:</strong> {selectedLead.email || '—'}</div>
               <div><strong>ZIP:</strong> {selectedLead.zip || '—'}</div>
               <div><strong>Vehicle:</strong> {selectedLead.vehicle || '—'}</div>
+              <div><strong>VIN:</strong> {selectedLead.vin || '—'}</div>
               <div><strong>Insurance:</strong> {selectedLead.insurance_type || '—'}</div>
               <div><strong>Status:</strong> {formatStatus(selectedLead.status)}</div>
               <div><strong>Damage Area:</strong> {selectedLead.damage_area || '—'}</div>
@@ -543,22 +568,22 @@ export default function EstimateLeads({ leads = [], onSaved, onConverted }) {
 
             {error ? <div className="error-box">{error}</div> : null}
 
-            <div className="modal-actions">
-              <button className="delete-btn" onClick={deleteLead} disabled={deleting || saving || converting}>
-                {deleting ? 'Deleting...' : 'Delete permanently'}
-              </button>
+            <div className="modal-actions estimate-modal-actions">
+              <div className="estimate-modal-action-row secondary-actions">
+                <button className="delete-btn" onClick={deleteLead} disabled={deleting || saving || converting}>
+                  {deleting ? 'Deleting...' : 'Delete permanently'}
+                </button>
+                <button className="ghost-btn" onClick={() => setSelectedLead(null)}>Cancel</button>
+              </div>
 
-              <button className="ghost-btn" onClick={() => setSelectedLead(null)}>
-                Cancel
-              </button>
-
-              <button className="success-btn" onClick={() => convertToAppointment(selectedLead)} disabled={converting}>
-                {converting ? 'Converting...' : 'Convert to Appointment'}
-              </button>
-
-              <button onClick={saveLead} disabled={saving}>
-                {saving ? 'Saving...' : 'Save Lead'}
-              </button>
+              <div className="estimate-modal-action-row primary-actions">
+                <button className="success-btn" onClick={() => convertToAppointment(selectedLead)} disabled={converting}>
+                  {converting ? 'Converting...' : 'Convert to Appointment'}
+                </button>
+                <button className="primary-btn" onClick={saveLead} disabled={saving}>
+                  {saving ? 'Saving...' : 'Save Lead'}
+                </button>
+              </div>
             </div>
           </div>
         </div>

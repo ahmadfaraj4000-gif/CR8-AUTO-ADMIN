@@ -114,7 +114,7 @@ export default function NewAppointmentModal({
 
   return (
     <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal-card" onClick={(e) => e.stopPropagation()}>
+      <div className="modal-card new-appointment-modal" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
           <div>
             <p className="eyebrow">Admin Action</p>
@@ -126,56 +126,16 @@ export default function NewAppointmentModal({
           </button>
         </div>
 
-        <input
-          placeholder="Customer Name"
-          value={form.name}
-          onChange={(e) => update('name', e.target.value)}
-        />
-
-        <input
-          placeholder="Phone"
-          value={form.phone}
-          onChange={(e) => update('phone', e.target.value)}
-        />
-
-        <input
-          placeholder="Email"
-          value={form.email}
-          onChange={(e) => update('email', e.target.value)}
-        />
-
-        <input
-          placeholder="Vehicle"
-          value={form.vehicle}
-          onChange={(e) => update('vehicle', e.target.value)}
-        />
-
-        <input
-          placeholder="Service"
-          value={form.service}
-          onChange={(e) => update('service', e.target.value)}
-        />
-
-        <label className="field-label">Appointment Date</label>
-        <input
-          type="date"
-          value={form.appointment_date}
-          onChange={(e) => update('appointment_date', e.target.value)}
-        />
-
-        <label className="field-label">Appointment Time</label>
-        <input
-          type="time"
-          value={form.appointment_time}
-          onChange={(e) => update('appointment_time', e.target.value)}
-        />
-
-        <label className="field-label">Drop Off Date</label>
-        <input
-          type="date"
-          value={form.dropoff_date}
-          onChange={(e) => update('dropoff_date', e.target.value)}
-        />
+        <div className="appointment-form-grid">
+          <label><span>Customer Name</span><input placeholder="Customer name" value={form.name} onChange={(e) => update('name', e.target.value)} /></label>
+          <label><span>Phone</span><input placeholder="Phone number" value={form.phone} onChange={(e) => update('phone', e.target.value)} /></label>
+          <label><span>Email</span><input type="email" placeholder="Email address" value={form.email} onChange={(e) => update('email', e.target.value)} /></label>
+          <label><span>Vehicle</span><input placeholder="Year, make and model" value={form.vehicle} onChange={(e) => update('vehicle', e.target.value)} /></label>
+          <label className="appointment-form-wide"><span>Service</span><input placeholder="Requested service" value={form.service} onChange={(e) => update('service', e.target.value)} /></label>
+          <label><span>Appointment Date</span><input type="date" value={form.appointment_date} onChange={(e) => update('appointment_date', e.target.value)} /></label>
+          <label><span>Appointment Time</span><input type="time" value={form.appointment_time} onChange={(e) => update('appointment_time', e.target.value)} /></label>
+          <label className="appointment-form-wide"><span>Drop Off Date</span><input type="date" value={form.dropoff_date} onChange={(e) => update('dropoff_date', e.target.value)} /></label>
+        </div>
 
         <textarea
           rows="5"
