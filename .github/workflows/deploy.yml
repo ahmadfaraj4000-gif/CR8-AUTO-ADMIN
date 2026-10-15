@@ -23,6 +23,11 @@ jobs:
           cache: npm
 
       - run: npm ci
+      - name: Check invoice numbering and local dates
+        run: |
+          TZ=America/New_York node --test tests/invoiceDraft.test.js
+          TZ=Asia/Tokyo node --test tests/invoiceDraft.test.js
+
       - run: npm run build
         env:
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}

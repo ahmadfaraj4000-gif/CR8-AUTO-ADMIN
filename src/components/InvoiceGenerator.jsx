@@ -1,7 +1,7 @@
 import logo from '../assets/logo.png'
 import { useEffect, useMemo, useState } from 'react'
 
-const DRAFT_KEY = 'cr8InvoiceDraft'
+import { DRAFT_KEY, formatInvoiceDate, loadOrCreateDraft, newInvoice, newLineItem, refreshInvoiceDate } from '../lib/invoiceDraft'
 
 const currency = new Intl.NumberFormat('en-US', {
   style: 'currency',
@@ -11,58 +11,6 @@ const currency = new Intl.NumberFormat('en-US', {
 function money(value) {
   const number = Number(value || 0)
   return currency.format(Number.isFinite(number) ? number : 0)
-}
-
-function newLineItem(type = 'part') {
-  return {
-    id: crypto.randomUUID(),
-    type,
-    description: '',
-    quantity: 1,
-    rate: ''
-  }
-}
-
-function todayISO() {
-  return new Date().toISOString().split('T')[0]
-}
-
-function newInvoice() {
-  return {
-    invoiceNumber: `CR8-${new Date().getFullYear()}-${String(Date.now()).slice(-5)}`,
-    invoiceDate: todayISO(),
-    dueDate: todayISO(),
-    customerName: '',
-    customerPhone: '',
-    customerEmail: '',
-    customerAddress: '',
-    vehicle: '',
-    vin: '',
-    mileage: '',
-    plate: '',
-    taxRate: '8',
-    discount: '',
-    amountPaid: '',
-    notes: 'Thank you for choosing CR8 Autos. Payment is due upon completion unless otherwise agreed in writing.',
-    terms: 'All parts and labor are listed above. Warranty coverage may vary by repair type and part supplier.'
-  }
-}
-
-function loadDraft() {
-  try {
-    const saved = JSON.parse(localStorage.getItem(DRAFT_KEY) || 'null')
-    if (!saved) return null
-
-    return {
-      documentType: saved.documentType === 'estimate' ? 'estimate' : 'invoice',
-      invoice: { ...newInvoice(), ...(saved.invoice || {}) },
-      items: Array.isArray(saved.items) && saved.items.length > 0
-        ? saved.items
-        : [newLineItem('part'), newLineItem('labor')]
-    }
-  } catch {
-    return null
-  }
 }
 
 function customerKey(customer) {
@@ -123,9 +71,10 @@ export default function InvoiceGenerator({ customers = [], onCustomerSaved }) {
   const [invoiceView, setInvoiceView] = useState('edit')
   const [selectedCustomerId, setSelectedCustomerId] = useState('')
   const [vehiclePickerCustomer, setVehiclePickerCustomer] = useState(null)
-  const [documentType, setDocumentType] = useState(() => loadDraft()?.documentType || 'invoice')
-  const [invoice, setInvoice] = useState(() => loadDraft()?.invoice || newInvoice())
-  const [items, setItems] = useState(() => loadDraft()?.items || [newLineItem('part'), newLineItem('labor')])
+  const [initialDraft] = useState(() => loadOrCreateDraft())
+  const [documentType, setDocumentType] = useState(initialDraft.documentType)
+  const [invoice, setInvoice] = useState(initialDraft.invoice)
+  const [items, setItems] = useState(initialDraft.items)
 
   const documentLabel = documentType === 'estimate' ? 'Estimate' : 'Invoice'
   const documentLabelUpper = documentLabel.toUpperCase()
@@ -133,6 +82,18 @@ export default function InvoiceGenerator({ customers = [], onCustomerSaved }) {
   useEffect(() => {
     localStorage.setItem(DRAFT_KEY, JSON.stringify({ documentType, invoice, items }))
   }, [documentType, invoice, items])
+
+  useEffect(() => {
+    const syncDate = () => setInvoice((current) => refreshInvoiceDate(current))
+    const interval = window.setInterval(syncDate, 1000)
+    window.addEventListener('focus', syncDate)
+    document.addEventListener('visibilitychange', syncDate)
+    return () => {
+      window.clearInterval(interval)
+      window.removeEventListener('focus', syncDate)
+      document.removeEventListener('visibilitychange', syncDate)
+    }
+  }, [])
 
   const customerOptions = useMemo(() => {
     const seen = new Map()
@@ -204,10 +165,11 @@ export default function InvoiceGenerator({ customers = [], onCustomerSaved }) {
     setItems((current) => current.filter((item) => item.id !== id))
   }
 
-  function clearInvoice() {
+  function startNewInvoice() {
     setSelectedCustomerId('')
     setVehiclePickerCustomer(null)
-    setInvoice(newInvoice())
+    setInvoice(newInvoice(localStorage, new Date(), invoice.invoiceNumber))
+    setInvoiceView('edit')
     setItems([newLineItem('part'), newLineItem('labor')])
     localStorage.removeItem(DRAFT_KEY)
   }
@@ -332,7 +294,7 @@ export default function InvoiceGenerator({ customers = [], onCustomerSaved }) {
           <div className="invoice-action-row invoice-workflow-actions" aria-label="Document actions">
             <button className={invoiceView === 'edit' ? 'primary-btn' : 'ghost-btn'} onClick={() => setInvoiceView('edit')}>Edit</button>
             <button className={invoiceView === 'preview' ? 'primary-btn' : 'ghost-btn'} onClick={() => setInvoiceView('preview')}>Preview</button>
-            <button className="ghost-btn" onClick={clearInvoice}>Clear</button>
+            <button className="ghost-btn" onClick={startNewInvoice}>New {documentLabel}</button>
             <button className="primary-btn" onClick={() => { saveCustomer(); setInvoiceView('preview'); setTimeout(() => window.print(), 80) }}>Print {documentLabel}</button>
           </div>
         </div>
@@ -345,11 +307,11 @@ export default function InvoiceGenerator({ customers = [], onCustomerSaved }) {
             <div className="invoice-form-grid">
               <label>
                 {documentLabel} #
-                <input value={invoice.invoiceNumber} onChange={(e) => updateInvoice('invoiceNumber', e.target.value)} />
+                <input value={invoice.invoiceNumber} readOnly title="Assigned automatically for each new document" />
               </label>
               <label>
                 Invoice Date
-                <input type="date" value={invoice.invoiceDate} onChange={(e) => updateInvoice('invoiceDate', e.target.value)} />
+                <input type="date" value={invoice.invoiceDate} readOnly />
               </label>
               <label>
                 Due Date
@@ -515,11 +477,11 @@ export default function InvoiceGenerator({ customers = [], onCustomerSaved }) {
               <div className="invoice-meta">
                 <h1>{documentLabelUpper}</h1>
                 <p>{documentLabel} #: {invoice.invoiceNumber}</p>
-                <p>Date: {new Date(invoice.invoiceDate).toLocaleDateString()}</p>
+                <p>Date: {formatInvoiceDate(invoice.invoiceDate)}</p>
                 {documentType === 'invoice' ? (
-                  <p>Due: {new Date(invoice.dueDate).toLocaleDateString()}</p>
+                  <p>Due: {formatInvoiceDate(invoice.dueDate)}</p>
                 ) : (
-                  <p>Valid Through: {new Date(invoice.dueDate).toLocaleDateString()}</p>
+                  <p>Valid Through: {formatInvoiceDate(invoice.dueDate)}</p>
                 )}
               </div>
             </div>
@@ -624,6 +586,10 @@ export default function InvoiceGenerator({ customers = [], onCustomerSaved }) {
               <button className="ghost-btn small" onClick={() => setVehiclePickerCustomer(null)}>Close</button>
             </div>
 
+            <div className="vehicle-picker-actions">
+              <button className="primary-btn" onClick={addNewVehicle}>+ Add New Vehicle</button>
+            </div>
+
             <div className="vehicle-picker-list">
               {vehiclePickerCustomer.vehicles.length === 0 ? (
                 <div className="vehicle-picker-empty">No vehicles are attached to this customer yet.</div>
@@ -643,9 +609,6 @@ export default function InvoiceGenerator({ customers = [], onCustomerSaved }) {
               )}
             </div>
 
-            <div className="vehicle-picker-actions">
-              <button className="primary-btn" onClick={addNewVehicle}>+ Add New Vehicle</button>
-            </div>
           </div>
         </div>
       ) : null}

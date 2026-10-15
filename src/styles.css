@@ -3466,3 +3466,15 @@ tbody td { color: #222422; }
   .sidebar-is-collapsed .side-nav button,
   .side-nav button { justify-content: flex-start; padding: 11px 12px; }
 }
+
+/* Keep numeric validation and decimal entry without the stepper arrows. */
+input[type="number"] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
