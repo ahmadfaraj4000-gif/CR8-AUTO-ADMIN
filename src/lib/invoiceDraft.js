@@ -30,7 +30,7 @@ function invoiceDefaults(now) {
 export function newInvoice(storage = localStorage, now = new Date(), previousNumber = '') {
   const year = now.getFullYear()
   const key = `cr8InvoiceSequence:${year}`
-  const previous = String(previousNumber).match(new RegExp(`^CR8-${year}-(\\d+)$`))
+  const previous = String(previousNumber).match(new RegExp(`^CR8-${year}-(\\d+)(?:-|$)`))
   const stored = Number(storage.getItem(key))
   const sequence = Math.max(Number.isSafeInteger(stored) && stored > 0 ? stored : 0, Number(previous?.[1] || 0)) + 1
   storage.setItem(key, String(sequence))
@@ -56,7 +56,7 @@ export function loadOrCreateDraft(storage = localStorage, now = new Date()) {
   if (!invoice.invoiceNumber) invoice.invoiceNumber = newInvoice(storage, now).invoiceNumber
   const draft = {
     documentType: saved?.documentType === 'estimate' ? 'estimate' : 'invoice',
-    invoice: refreshInvoiceDate(invoice, now),
+    invoice,
     items: Array.isArray(saved?.items) ? saved.items : [newLineItem('part'), newLineItem('labor')]
   }
   // Persist immediately: remounts and React StrictMode reuse the same number.

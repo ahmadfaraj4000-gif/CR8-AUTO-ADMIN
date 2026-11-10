@@ -134,3 +134,21 @@ You can deploy the admin app to Vercel, Netlify, or another static host.
 
 Do **not** put your Supabase service role key in the frontend.
 Only use the publishable / anon key in this app.
+
+## Invoice history and payments
+
+Install `supabase-invoices.sql` in the **CR8 project's** SQL Editor to enable shared invoice storage. It adds `invoices` and immutable `invoice_versions`, with access restricted to active admin/front-desk profiles. It does not modify customer, booking, or lead records. Before installation, verify that any existing `invoices` table is compatible with this migration; do not replace an unrelated table.
+
+Invoices now autosave individually in the browser and sync to Supabase. The status line distinguishes shared saves from browser-only saves. Network errors and concurrent edits are shown instead of claiming a successful cloud save. Concurrent edits retain the local copy; the user can open the shared version while preserving their edits as a separate LOCAL-COPY. That copy is for comparison and must not be treated as an additional customer debt.
+
+Selecting an existing customer and vehicle recalls the most recently edited partially paid invoice first, otherwise the most recently edited document. Invoice History lists all saved documents and supports a partially-paid filter, customer/vehicle filter and search. “New invoice for this customer and vehicle” starts a separate repair without carrying payments forward. Original invoice and due dates are retained. New invoice numbers include a short unique suffix so separate browsers do not share the same counter-only number.
+
+Each payment records its amount, date, type, optional reference and note. Paid amounts and balances are calculated from non-voided payments. Voiding requires a reason and retains the original entry. The print preview includes payment history. Export/Import Backup provides a portable JSON copy; importing a conflicting version preserves it separately rather than replacing existing work.
+
+### Recovering older invoices
+
+The former app only saved a single `cr8InvoiceDraft` in localStorage and never saved invoice charges or payments to Supabase. “Save Customer” saved contact/vehicle information only. Starting a new document replaced the previous draft. Payment types and payment dates were never recorded.
+
+The upgrade preserves the raw surviving draft in `cr8InvoiceDraft:original-backup`, imports it once into per-invoice history, and converts any positive Amount Paid into one legacy payment marked **Unknown (legacy)** with no invented payment date. The old raw draft remains available. Malformed storage is left untouched and reported. The upgrade cannot reconstruct drafts already overwritten by the old app. Check the exact browser/profile/device and origin used to create them, plus previously printed/downloaded invoices or backups. Do not infer charges or payments from customer records.
+
+Run `npm test` and `npm run build` for app validation. The GitHub deployment also runs `tests/invoiceDatabase.sql` against a disposable PostgreSQL instance to check staff permissions, immutable history, atomic payment snapshots, optimistic concurrency and repeatable installation. Never run that test file in the production database; only `supabase-invoices.sql` is a production migration.

@@ -1,7 +1,11 @@
 import logo from '../assets/logo.png'
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 
-import { DRAFT_KEY, formatInvoiceDate, loadOrCreateDraft, newInvoice, newLineItem, refreshInvoiceDate } from '../lib/invoiceDraft'
+import { formatInvoiceDate, newLineItem, todayISO } from '../lib/invoiceDraft'
+import useInvoiceHistory from '../lib/useInvoiceHistory'
+import { createRecord, addPayment, voidPayment, invoiceTotals, invoiceStatus, matchingHistory, importRecords, readHistory, LEGACY_BACKUP_KEY, RECORD_PREFIX } from '../lib/invoiceHistory'
+import { supabase } from '../lib/supabase'
+import { fromCloud } from '../lib/invoiceSync'
 
 const currency = new Intl.NumberFormat('en-US', {
   style: 'currency',
@@ -67,38 +71,81 @@ function formatVehicleTitle(vehicle) {
   return vehicle.vehicle || [vehicle.vehicle_year, vehicle.vehicle_make, vehicle.vehicle_model].filter(Boolean).join(' ') || 'Unnamed vehicle'
 }
 
-export default function InvoiceGenerator({ customers = [], onCustomerSaved }) {
+function downloadBackup() {
+  const data = { version: 1, exportedAt: new Date().toISOString(), records: readHistory(), legacyDraft: localStorage.getItem(LEGACY_BACKUP_KEY) }
+  const url = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }))
+  const link = document.createElement('a')
+  link.href = url
+  link.download = `CR8-invoices-${todayISO()}.json`
+  link.click()
+  setTimeout(() => URL.revokeObjectURL(url), 1000)
+}
+
+export default function InvoiceGenerator(props) {
+  const store = useInvoiceHistory()
+  if (!store.record) return <section className="invoice-module"><h2>Invoice recovery needed</h2><p role="alert">{store.error}</p><p>Do not clear browser data. The original draft is still stored in this browser.</p></section>
+  return <InvoiceEditor {...props} store={store} />
+}
+
+function InvoiceEditor({ customers = [], onCustomerSaved, store }) {
   const [invoiceView, setInvoiceView] = useState('edit')
   const [selectedCustomerId, setSelectedCustomerId] = useState('')
   const [vehiclePickerCustomer, setVehiclePickerCustomer] = useState(null)
-  const [initialDraft] = useState(() => loadOrCreateDraft())
-  const [documentType, setDocumentType] = useState(initialDraft.documentType)
-  const [invoice, setInvoice] = useState(initialDraft.invoice)
-  const [items, setItems] = useState(initialDraft.items)
-
+  const [historyFilter, setHistoryFilter] = useState('all')
+  const [historySearch, setHistorySearch] = useState('')
+  const [notice, setNotice] = useState('')
+  const [payment, setPayment] = useState({ amount: '', date: todayISO(), method: 'Cash', reference: '', note: '' })
+  const [voidId, setVoidId] = useState('')
+  const [voidReason, setVoidReason] = useState('')
+  const { record, history } = store
+  const { documentType, invoice, items } = record
+  const setInvoice = (change) => store.edit(old => ({ invoice: typeof change === 'function' ? change(old.invoice) : change }))
+  const setItems = (change) => store.edit(old => ({ items: typeof change === 'function' ? change(old.items) : change }))
   const documentLabel = documentType === 'estimate' ? 'Estimate' : 'Invoice'
   const documentLabelUpper = documentLabel.toUpperCase()
+  const totals = invoiceTotals(record)
+  const relatedHistory = matchingHistory(history, invoice, invoice)
+  const visibleHistory = (historyFilter === 'vehicle' ? relatedHistory : history)
+    .filter(saved => historyFilter !== 'partial' || invoiceStatus(saved) === 'Partially paid')
+    .filter(saved => [saved.invoice.invoiceNumber, saved.invoice.customerName, saved.invoice.customerPhone, saved.invoice.vehicle, saved.invoice.vin, saved.invoice.plate].join(' ').toLowerCase().includes(historySearch.toLowerCase()))
 
-  useEffect(() => {
-    localStorage.setItem(DRAFT_KEY, JSON.stringify({ documentType, invoice, items }))
-  }, [documentType, invoice, items])
-
-  useEffect(() => {
-    const syncDate = () => setInvoice((current) => refreshInvoiceDate(current))
-    const interval = window.setInterval(syncDate, 1000)
-    window.addEventListener('focus', syncDate)
-    document.addEventListener('visibilitychange', syncDate)
-    return () => {
-      window.clearInterval(interval)
-      window.removeEventListener('focus', syncDate)
-      document.removeEventListener('visibilitychange', syncDate)
+  function openInvoice(saved) {
+    if (store.open(saved)) {
+      setInvoiceView('edit')
+      setPayment({ amount: '', date: todayISO(), method: 'Cash', reference: '', note: '' })
+      setVoidId('')
+      setNotice(`Recalled ${saved.invoice.invoiceNumber} with its saved charges and payments.`)
     }
-  }, [])
+  }
+
+  async function importBackup(event) {
+    const file = event.target.files?.[0]
+    if (!file) return
+    try {
+      const count = importRecords(JSON.parse(await file.text()))
+      await store.refresh()
+      setNotice(`Recovered ${count} invoice${count === 1 ? '' : 's'} from the backup. Existing invoices were retained.`)
+    } catch (error) { store.setError(error.message) }
+    event.target.value = ''
+  }
+
+  async function openSharedVersion() {
+    try {
+      const { data, error } = await supabase.from('invoices').select('id, revision, document').eq('id', record.id).single()
+      if (error) throw error
+      // Preserve conflicting local work as a separate recovery copy before opening the shared invoice.
+      const copy = { ...record, id: crypto.randomUUID(), baseRevision: null, dirty: true, recoveredFrom: record.id,
+        invoice: { ...record.invoice, invoiceNumber: record.invoice.invoiceNumber + '-LOCAL-COPY' } }
+      localStorage.setItem(RECORD_PREFIX + copy.id, JSON.stringify(copy))
+      store.change(fromCloud(data))
+      setNotice('Opened the shared version. Your previous edits are retained as a LOCAL-COPY in history; compare before recording further payments.')
+    } catch (error) { store.setError(error.message) }
+  }
 
   const customerOptions = useMemo(() => {
     const seen = new Map()
 
-    customers.map(normalizeCustomer).forEach((customer) => {
+    ;[...customers, ...history.map(saved => saved.invoice)].map(normalizeCustomer).forEach((customer) => {
       const key = customerIdentityKey(customer)
       if (!key) return
 
@@ -143,7 +190,7 @@ export default function InvoiceGenerator({ customers = [], onCustomerSaved }) {
         vehicles: customer.vehicles.sort((a, b) => formatVehicleTitle(a).localeCompare(formatVehicleTitle(b)))
       }))
       .sort((a, b) => a.name.localeCompare(b.name))
-  }, [customers])
+  }, [customers, history])
 
   function updateInvoice(field, value) {
     setInvoice((current) => ({ ...current, [field]: value }))
@@ -165,55 +212,60 @@ export default function InvoiceGenerator({ customers = [], onCustomerSaved }) {
     setItems((current) => current.filter((item) => item.id !== id))
   }
 
-  function startNewInvoice() {
-    setSelectedCustomerId('')
-    setVehiclePickerCustomer(null)
-    setInvoice(newInvoice(localStorage, new Date(), invoice.invoiceNumber))
-    setInvoiceView('edit')
-    setItems([newLineItem('part'), newLineItem('labor')])
-    localStorage.removeItem(DRAFT_KEY)
+  function startNewInvoice(context = {}) {
+    const next = createRecord(invoice.invoiceNumber)
+    next.documentType = documentType
+    next.invoice = { ...next.invoice, ...context }
+    if (store.change(next)) {
+      setSelectedCustomerId('')
+      setVehiclePickerCustomer(null)
+      setInvoiceView('edit')
+      setPayment({ amount: '', date: todayISO(), method: 'Cash', reference: '', note: '' })
+      setVoidId('')
+      setNotice('Started a new document. Previous invoices remain in history.')
+    }
   }
 
   function selectCustomer(id) {
     setSelectedCustomerId(id)
     const customer = customerOptions.find((option) => option.id === id)
-    if (!customer) return
+    if (customer) setVehiclePickerCustomer(customer)
+  }
 
-    setInvoice((current) => ({
-      ...current,
-      customerName: customer.name || '',
-      customerPhone: customer.phone || '',
-      customerEmail: customer.email || '',
-      customerAddress: customer.address || '',
-      vehicle: '',
-      vin: '',
-      mileage: '',
-      plate: ''
-    }))
-
-    setVehiclePickerCustomer(customer)
+  function customerContext(customer, vehicle = {}) {
+    return {
+      customerName: customer.name || '', customerPhone: customer.phone || '',
+      customerEmail: customer.email || '', customerAddress: customer.address || '',
+      vehicle: vehicle.vehicle || '', vin: vehicle.vin || '', mileage: vehicle.mileage || '', plate: vehicle.plate || ''
+    }
   }
 
   function selectVehicle(vehicle) {
-    setInvoice((current) => ({
-      ...current,
-      vehicle: vehicle.vehicle || '',
-      vin: vehicle.vin || '',
-      mileage: vehicle.mileage || '',
-      plate: vehicle.plate || ''
-    }))
+    const customer = vehiclePickerCustomer
+    const matches = matchingHistory(history, customer, vehicle)
+    if (matches.length) openInvoice(matches[0])
+    else startNewInvoice(customerContext(customer, vehicle))
+    setSelectedCustomerId(customer.id)
     setVehiclePickerCustomer(null)
+    setHistoryFilter('vehicle')
+    setHistorySearch('')
+    if (!matches.length) setNotice('No saved invoice was found for this customer and vehicle. A new document has been started with no previous payments.')
   }
 
   function addNewVehicle() {
-    setInvoice((current) => ({
-      ...current,
-      vehicle: '',
-      vin: '',
-      mileage: '',
-      plate: ''
-    }))
-    setVehiclePickerCustomer(null)
+    const customer = vehiclePickerCustomer
+    startNewInvoice(customerContext(customer))
+    setSelectedCustomerId(customer.id)
+  }
+
+  function recordPayment(event) {
+    event.preventDefault()
+    try {
+      if (store.change(current => addPayment(current, payment))) {
+        setPayment({ amount: '', date: todayISO(), method: 'Cash', reference: '', note: '' })
+        setNotice('Payment recorded. The paid amount and balance have been updated.')
+      }
+    } catch (error) { store.setError(error.message) }
   }
 
   function saveCustomer() {
@@ -232,60 +284,26 @@ export default function InvoiceGenerator({ customers = [], onCustomerSaved }) {
     onCustomerSaved?.(customer)
   }
 
-  const totals = useMemo(() => {
-    const partsSubtotal = items
-      .filter((item) => item.type === 'part')
-      .reduce((sum, item) => sum + Number(item.quantity || 0) * Number(item.rate || 0), 0)
-
-    const laborSubtotal = items
-      .filter((item) => item.type === 'labor')
-      .reduce((sum, item) => sum + Number(item.quantity || 0) * Number(item.rate || 0), 0)
-
-    const otherSubtotal = items
-      .filter((item) => item.type === 'other')
-      .reduce((sum, item) => sum + Number(item.quantity || 0) * Number(item.rate || 0), 0)
-
-    const subtotal = partsSubtotal + laborSubtotal + otherSubtotal
-    const discount = Number(invoice.discount || 0)
-    const taxableAmount = Math.max(0, subtotal - discount)
-    const tax = taxableAmount * (Number(invoice.taxRate || 0) / 100)
-    const total = taxableAmount + tax
-    const amountPaid = Number(invoice.amountPaid || 0)
-    const balanceDue = Math.max(0, total - amountPaid)
-
-    return {
-      partsSubtotal,
-      laborSubtotal,
-      otherSubtotal,
-      subtotal,
-      discount,
-      tax,
-      total,
-      amountPaid,
-      balanceDue
-    }
-  }, [items, invoice.discount, invoice.taxRate, invoice.amountPaid])
-
   return (
     <section className="invoice-module">
       <div className="invoice-actions no-print">
         <div>
           <p className="eyebrow">Invoice Generator</p>
           <h2>Create a customer {documentLabel.toLowerCase()}</h2>
-          <p className="muted">Drafts save automatically while you move between tabs.</p>
+          <p className="muted">Recall saved pricing, payment history, and outstanding balances.</p>
         </div>
 
         <div className="invoice-action-buttons">
           <div className="invoice-action-row document-type-actions" aria-label="Document type">
             <button
               className={documentType === 'invoice' ? 'primary-btn' : 'ghost-btn'}
-              onClick={() => setDocumentType('invoice')}
+              onClick={() => store.edit({ documentType: 'invoice' })}
             >
               Invoice
             </button>
             <button
               className={documentType === 'estimate' ? 'primary-btn' : 'ghost-btn'}
-              onClick={() => setDocumentType('estimate')}
+              disabled={record.payments.some(p => !p.voidedAt)} title={record.payments.some(p => !p.voidedAt) ? 'An invoice with payments cannot be changed to an estimate' : ''} onClick={() => store.edit({ documentType: 'estimate' })}
             >
               Estimate
             </button>
@@ -294,11 +312,38 @@ export default function InvoiceGenerator({ customers = [], onCustomerSaved }) {
           <div className="invoice-action-row invoice-workflow-actions" aria-label="Document actions">
             <button className={invoiceView === 'edit' ? 'primary-btn' : 'ghost-btn'} onClick={() => setInvoiceView('edit')}>Edit</button>
             <button className={invoiceView === 'preview' ? 'primary-btn' : 'ghost-btn'} onClick={() => setInvoiceView('preview')}>Preview</button>
-            <button className="ghost-btn" onClick={startNewInvoice}>New {documentLabel}</button>
-            <button className="primary-btn" onClick={() => { saveCustomer(); setInvoiceView('preview'); setTimeout(() => window.print(), 80) }}>Print {documentLabel}</button>
+            <button className="ghost-btn" onClick={() => startNewInvoice()}>New {documentLabel}</button>
+            <button className="ghost-btn" onClick={() => { saveCustomer(); store.sync() }}>Save {documentLabel}</button>
+            <button className="primary-btn" onClick={() => { saveCustomer(); store.sync(); setInvoiceView('preview'); setTimeout(() => window.print(), 80) }}>Print {documentLabel}</button>
           </div>
         </div>
       </div>
+
+      <div className="invoice-save-status no-print" role="status">{store.status}</div>
+      {store.error ? <div className="invoice-error no-print" role="alert"><p>{store.error}</p><button className="ghost-btn small" onClick={store.refresh}>Retry shared storage</button>{store.error.includes(`Invoice ${record.invoice.invoiceNumber} changed on another device`) ? <button className="ghost-btn small" onClick={openSharedVersion}>Open shared version and keep my copy</button> : null}</div> : null}
+      {notice ? <p className="invoice-notice no-print" role="status">{notice}</p> : null}
+      <section className="invoice-history no-print" aria-label="Saved invoice history">
+        <div className="invoice-section-title-row"><h3>Invoice History</h3><div className="invoice-mini-actions">
+          <button className="ghost-btn small" onClick={store.refresh}>Refresh history</button>
+          <button className="ghost-btn small" onClick={() => { try { downloadBackup() } catch (error) { store.setError(error.message) } }}>Export backup</button>
+          <label className="ghost-btn small invoice-import">Import backup<input type="file" accept=".json,application/json" onChange={importBackup} /></label>
+        </div></div>
+        <div className="invoice-history-filters">
+          <label>Search invoices<input placeholder="Customer, vehicle, VIN, or invoice number" value={historySearch} onChange={e => setHistorySearch(e.target.value)} /></label>
+          <label>Show<select value={historyFilter} onChange={e => setHistoryFilter(e.target.value)}><option value="all">All documents</option><option value="partial">Partially paid invoices</option><option value="vehicle">This customer and vehicle</option></select></label>
+        </div>
+        <div className="invoice-history-list">
+          {visibleHistory.length ? visibleHistory.map(saved => {
+            const amounts = invoiceTotals(saved)
+            return <button key={saved.id} className={`invoice-history-card ${saved.id === record.id ? 'selected' : ''}`} onClick={() => openInvoice(saved)}>
+              <span><strong>{saved.invoice.invoiceNumber}</strong> · {invoiceStatus(saved)}{saved.dirty ? ' · Browser copy' : ''}</span>
+              <span>{saved.invoice.customerName || 'Unnamed customer'} · {saved.invoice.vehicle || 'No vehicle'} · {formatInvoiceDate(saved.invoice.invoiceDate)}</span>
+              <span>Total {money(amounts.total)} · Paid {money(amounts.amountPaid)} · Balance {money(amounts.balanceDue)}{amounts.credit > 0 ? ` · Credit ${money(amounts.credit)}` : ''}</span>
+            </button>
+          }) : <p className="muted">No saved invoices match this selection. Old customer records did not include invoice charges or payments.</p>}
+        </div>
+        <button className="ghost-btn small" onClick={() => startNewInvoice({ customerName: invoice.customerName, customerPhone: invoice.customerPhone, customerEmail: invoice.customerEmail, customerAddress: invoice.customerAddress, vehicle: invoice.vehicle, vin: invoice.vin, mileage: invoice.mileage, plate: invoice.plate })}>New {documentLabel.toLowerCase()} for this customer and vehicle</button>
+      </section>
 
       <div className="invoice-workspace">
         <div className={`invoice-form no-print ${invoiceView === 'edit' ? 'active' : ''}`}>
@@ -311,7 +356,7 @@ export default function InvoiceGenerator({ customers = [], onCustomerSaved }) {
               </label>
               <label>
                 Invoice Date
-                <input type="date" value={invoice.invoiceDate} readOnly />
+                <input type="date" value={invoice.invoiceDate} onChange={(e) => updateInvoice('invoiceDate', e.target.value)} />
               </label>
               <label>
                 Due Date
@@ -442,9 +487,32 @@ export default function InvoiceGenerator({ customers = [], onCustomerSaved }) {
               </label>
               <label>
                 Amount Paid
-                <input type="number" step="0.01" value={invoice.amountPaid} onChange={(e) => updateInvoice('amountPaid', e.target.value)} />
+                <input type="number" step="0.01" value={totals.amountPaid} readOnly title="Calculated from payment history" />
               </label>
             </div>
+          </div>
+
+          <div className="invoice-form-section">
+            <h3>Payment History</h3>
+            <p><strong>Paid {money(totals.amountPaid)} · Balance due {money(totals.balanceDue)}</strong>{totals.credit > 0 ? ` · Credit ${money(totals.credit)}` : ''}</p>
+            {record.payments.length ? record.payments.map(entry => <div className="invoice-payment" key={entry.id}>
+              <strong>{money(entry.amount)} · {entry.method}{entry.voidedAt ? ' · VOIDED' : ''}</strong>
+              <span>{entry.date ? formatInvoiceDate(entry.date) : 'Payment date not recorded'}{entry.reference ? ` · Reference: ${entry.reference}` : ''}</span>
+              {entry.note ? <span>{entry.note}</span> : null}
+              {entry.voidedAt ? <span>Void reason: {entry.voidReason}</span> : <button className="ghost-btn small" onClick={() => { setVoidId(entry.id); setVoidReason('') }}>Void payment</button>}
+              {voidId === entry.id ? <div><label>Reason for voiding<input value={voidReason} onChange={e => setVoidReason(e.target.value)} /></label><button className="ghost-btn small" onClick={() => { try { if (store.change(current => voidPayment(current, entry.id, voidReason))) setVoidId('') } catch (error) { store.setError(error.message) } }}>Confirm void</button><button className="ghost-btn small" onClick={() => setVoidId('')}>Cancel</button></div> : null}
+            </div>) : <p className="muted">No payments recorded on this invoice.</p>}
+            {documentType === 'invoice' ? <form onSubmit={recordPayment} className="invoice-payment-form">
+              <h4>Record a payment</h4>
+              <div className="invoice-form-grid">
+                <label>Payment amount<input required type="number" min="0.01" step="0.01" value={payment.amount} onChange={e => setPayment({ ...payment, amount: e.target.value })} /></label>
+                <label>Payment date<input required type="date" value={payment.date} onChange={e => setPayment({ ...payment, date: e.target.value })} /></label>
+                <label>Payment type<select value={payment.method} onChange={e => setPayment({ ...payment, method: e.target.value })}>{['Cash', 'Card', 'Check', 'Zelle', 'Venmo', 'Cash App', 'Bank transfer', 'Other'].map(method => <option key={method}>{method}</option>)}</select></label>
+                <label>Reference / check number<input value={payment.reference} onChange={e => setPayment({ ...payment, reference: e.target.value })} /></label>
+              </div>
+              <label>Payment note<input value={payment.note} onChange={e => setPayment({ ...payment, note: e.target.value })} /></label>
+              <button className="primary-btn" type="submit">Record payment</button>
+            </form> : <p className="muted">Change this estimate to an invoice before recording a payment.</p>}
           </div>
 
           <div className="invoice-form-section">
@@ -541,6 +609,8 @@ export default function InvoiceGenerator({ customers = [], onCustomerSaved }) {
             </tbody>
           </table>
 
+          {record.payments.length ? <section className="invoice-printed-payments"><h3>Payment History</h3><table className="invoice-table"><thead><tr><th>Date</th><th>Type</th><th>Reference / Notes</th><th>Amount</th></tr></thead><tbody>{record.payments.map(entry => <tr key={entry.id}><td>{entry.date ? formatInvoiceDate(entry.date) : 'Not recorded'}</td><td>{entry.method}{entry.voidedAt ? ' (Voided)' : ''}</td><td>{[entry.reference, entry.note, entry.voidedAt ? `Void: ${entry.voidReason}` : ''].filter(Boolean).join(' · ') || '—'}</td><td>{money(entry.amount)}</td></tr>)}</tbody></table></section> : null}
+
           <div className="invoice-bottom-grid">
             <div className="invoice-notes-block">
               <h3>Notes</h3>
@@ -561,6 +631,7 @@ export default function InvoiceGenerator({ customers = [], onCustomerSaved }) {
                 <>
                   <div><span>Paid</span><strong>{money(totals.amountPaid)}</strong></div>
                   <div className="balance-row"><span>Balance Due</span><strong>{money(totals.balanceDue)}</strong></div>
+                  {totals.credit > 0 ? <div><span>Credit</span><strong>{money(totals.credit)}</strong></div> : null}
                 </>
               ) : (
                 <div className="balance-row"><span>Estimated Total</span><strong>{money(totals.total)}</strong></div>

@@ -13,6 +13,18 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: invoice-test-only
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
 
     steps:
       - uses: actions/checkout@v4
@@ -23,10 +35,15 @@ jobs:
           cache: npm
 
       - run: npm ci
-      - name: Check invoice numbering and local dates
+      - name: Check invoice history, payments, recovery and dates
         run: |
-          TZ=America/New_York node --test tests/invoiceDraft.test.js
-          TZ=Asia/Tokyo node --test tests/invoiceDraft.test.js
+          TZ=America/New_York node --test tests/*.test.js
+          TZ=Asia/Tokyo node --test tests/*.test.js
+
+      - name: Check invoice database permissions and revision history
+        run: psql -h localhost -U postgres -d postgres -f tests/invoiceDatabase.sql
+        env:
+          PGPASSWORD: invoice-test-only
 
       - run: npm run build
         env:

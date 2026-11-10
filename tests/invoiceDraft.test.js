@@ -24,7 +24,7 @@ test('reopening a draft preserves its number; starting a new invoice advances it
   assert.equal(loadOrCreateDraft(storage, today).invoice.invoiceNumber, 'CR8-2026-00003')
 })
 
-test('an existing draft keeps customer, items, and number when its date updates', () => {
+test('an existing draft keeps its original dates, customer, items, number and paid amount', () => {
   const storage = memoryStorage()
   storage.setItem(DRAFT_KEY, JSON.stringify({
     documentType: 'estimate',
@@ -33,8 +33,8 @@ test('an existing draft keeps customer, items, and number when its date updates'
   }))
   const draft = loadOrCreateDraft(storage, today)
   assert.equal(draft.invoice.invoiceNumber, 'CR8-2026-90812')
-  assert.equal(draft.invoice.invoiceDate, '2026-10-15')
-  assert.equal(draft.invoice.dueDate, '2026-10-15')
+  assert.equal(draft.invoice.invoiceDate, '2026-10-14')
+  assert.equal(draft.invoice.dueDate, '2026-10-14')
   assert.equal(draft.invoice.customerName, 'Test customer')
   assert.equal(draft.invoice.amountPaid, '50')
   assert.equal(draft.documentType, 'estimate')

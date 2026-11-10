@@ -3478,3 +3478,26 @@ input[type="number"]::-webkit-outer-spin-button {
   -webkit-appearance: none;
   margin: 0;
 }
+
+/* Persistent invoice history and payment ledger. */
+.invoice-history { padding: 20px; border: 1px solid #d5d5d5; border-radius: 14px; margin-bottom: 22px; background: #fff; }
+.invoice-history h3 { margin: 0; }
+.invoice-history-filters { display: grid; grid-template-columns: minmax(0, 2fr) minmax(180px, 1fr); gap: 12px; margin: 16px 0; }
+.invoice-history-filters label, .invoice-payment label { display: grid; gap: 6px; }
+.invoice-history-filters input, .invoice-history-filters select { width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 8px; background: #fff; color: #222; }
+.invoice-history-list { display: grid; gap: 8px; max-height: 290px; overflow: auto; margin-bottom: 14px; }
+.invoice-history-card { display: grid; gap: 5px; width: 100%; text-align: left; padding: 12px; border: 1px solid #ddd; border-radius: 8px; background: #fafafa; color: #222; cursor: pointer; overflow-wrap: anywhere; }
+.invoice-history-card.selected { border-color: #c91c27; background: #fff3f3; }
+.invoice-history-card span + span { font-size: 13px; color: #444; }
+.invoice-save-status, .invoice-notice { padding: 10px 0; color: #334155; }
+.invoice-error { padding: 12px 16px; margin: 12px 0; background: #fff8e6; color: #713f12; border: 1px solid #e7c977; border-radius: 8px; }
+.invoice-import { position: relative; cursor: pointer; }
+.invoice-import input { position: absolute; inset: 0; opacity: 0; width: 100%; cursor: pointer; }
+.invoice-payment { display: grid; gap: 6px; padding: 12px 0; border-bottom: 1px solid #475569; overflow-wrap: anywhere; }
+.invoice-payment .small { justify-self: start; }
+.invoice-payment-form { margin-top: 18px; }
+.invoice-printed-payments { margin: 20px 0; }
+@media (max-width: 700px) {
+  .invoice-history-filters { grid-template-columns: 1fr; }
+  .invoice-history .invoice-section-title-row { align-items: flex-start; flex-direction: column; gap: 12px; }
+}
