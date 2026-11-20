@@ -2089,7 +2089,16 @@ code {
     border: none !important;
     border-radius: 0 !important;
     background: #ffffff !important;
-    color: #111111 !important;
+  }
+
+  .invoice-preview.print-area,
+  .invoice-preview.print-area * {
+    color: #000 !important;
+  }
+
+  .invoice-table th,
+  .invoice-totals-card .balance-row {
+    background: #fff;
   }
 
   .invoice-header {
