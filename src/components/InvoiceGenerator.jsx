@@ -287,7 +287,7 @@ function InvoiceEditor({ customers = [], onCustomerSaved, store }) {
   return (
     <section className="invoice-module">
       <section className="document-toolbar no-print" aria-label="Current document">
-        <div className="document-toolbar-row">
+        <div className="document-toolbar-row document-heading-controls">
           <label className="document-kind">
             Document type
             <select value={documentType} onChange={event => store.edit({ documentType: event.target.value })}>
@@ -370,17 +370,19 @@ function InvoiceEditor({ customers = [], onCustomerSaved, store }) {
               <h3>Customer</h3>
               <button className="ghost-btn small" onClick={saveCustomer}>Save Customer</button>
             </div>
-            <label>
-              Existing Customer
-              <select value={selectedCustomerId} onChange={(e) => selectCustomer(e.target.value)}>
-                <option value="">Select a customer...</option>
-                {customerOptions.map((customer) => (
-                  <option key={customer.id} value={customer.id}>
-                    {[customer.name, customer.phone, `${customer.vehicles.length} vehicle${customer.vehicles.length === 1 ? '' : 's'}`].filter(Boolean).join(' - ')}
-                  </option>
-                ))}
-              </select>
-            </label>
+            <div className="invoice-form-grid">
+              <label>
+                Existing Customer
+                <select value={selectedCustomerId} onChange={(e) => selectCustomer(e.target.value)}>
+                  <option value="">Select a customer...</option>
+                  {customerOptions.map((customer) => (
+                    <option key={customer.id} value={customer.id}>
+                      {[customer.name, customer.phone, `${customer.vehicles.length} vehicle${customer.vehicles.length === 1 ? '' : 's'}`].filter(Boolean).join(' - ')}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
             <div className="invoice-form-grid">
               <label>
                 Name
@@ -441,7 +443,7 @@ function InvoiceEditor({ customers = [], onCustomerSaved, store }) {
             <div className="line-item-editor">
               {items.map((item) => (
                 <div className="line-item-row" key={item.id}>
-                  <select value={item.type} onChange={(e) => updateItem(item.id, 'type', e.target.value)}>
+                  <select aria-label="Charge type" value={item.type} onChange={(e) => updateItem(item.id, 'type', e.target.value)}>
                     <option value="part">Part</option>
                     <option value="labor">Labor</option>
                     <option value="other">Other</option>
