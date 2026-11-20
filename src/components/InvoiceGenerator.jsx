@@ -286,48 +286,44 @@ function InvoiceEditor({ customers = [], onCustomerSaved, store }) {
 
   return (
     <section className="invoice-module">
-      <div className="invoice-actions no-print">
-        <div>
-          <p className="eyebrow">Invoice Generator</p>
-          <h2>Create a customer {documentLabel.toLowerCase()}</h2>
-          <p className="muted">Recall saved pricing, payment history, and outstanding balances.</p>
+      <section className="document-toolbar no-print" aria-label="Current document">
+        <div className="document-toolbar-row">
+          <label className="document-kind">
+            Document type
+            <select value={documentType} onChange={event => store.edit({ documentType: event.target.value })}>
+              <option value="invoice">Invoice</option>
+              <option value="estimate" disabled={record.payments.some(payment => !payment.voidedAt)}>Estimate</option>
+            </select>
+          </label>
+          <button className="ghost-btn" onClick={() => startNewInvoice()}>+ New {documentLabel.toLowerCase()}</button>
         </div>
-
-        <div className="invoice-action-buttons">
-          <div className="invoice-action-row document-type-actions" aria-label="Document type">
-            <button
-              className={documentType === 'invoice' ? 'primary-btn' : 'ghost-btn'}
-              onClick={() => store.edit({ documentType: 'invoice' })}
-            >
-              Invoice
-            </button>
-            <button
-              className={documentType === 'estimate' ? 'primary-btn' : 'ghost-btn'}
-              disabled={record.payments.some(p => !p.voidedAt)} title={record.payments.some(p => !p.voidedAt) ? 'An invoice with payments cannot be changed to an estimate' : ''} onClick={() => store.edit({ documentType: 'estimate' })}
-            >
-              Estimate
-            </button>
+        <h2>{invoice.invoiceNumber}</h2>
+        <div className="document-toolbar-row document-controls">
+          <div className="document-views" role="group" aria-label="Document view">
+            <button aria-pressed={invoiceView === 'edit'} onClick={() => setInvoiceView('edit')}>Edit</button>
+            <button aria-pressed={invoiceView === 'preview'} onClick={() => setInvoiceView('preview')}>Preview</button>
           </div>
-
-          <div className="invoice-action-row invoice-workflow-actions" aria-label="Document actions">
-            <button className={invoiceView === 'edit' ? 'primary-btn' : 'ghost-btn'} onClick={() => setInvoiceView('edit')}>Edit</button>
-            <button className={invoiceView === 'preview' ? 'primary-btn' : 'ghost-btn'} onClick={() => setInvoiceView('preview')}>Preview</button>
-            <button className="ghost-btn" onClick={() => startNewInvoice()}>New {documentLabel}</button>
-            <button className="ghost-btn" onClick={() => { saveCustomer(); store.sync() }}>Save {documentLabel}</button>
-            <button className="primary-btn" onClick={() => { saveCustomer(); store.sync(); setInvoiceView('preview'); setTimeout(() => window.print(), 80) }}>Print {documentLabel}</button>
+          <div className="document-outputs">
+            <button className="ghost-btn" onClick={() => { saveCustomer(); store.sync() }}>Save</button>
+            <button className="primary-btn" onClick={() => { saveCustomer(); store.sync(); setInvoiceView('preview'); setTimeout(() => window.print(), 80) }}>Print</button>
           </div>
         </div>
-      </div>
-
-      <div className="invoice-save-status no-print" role="status">{store.status}</div>
+        <div className="document-save-status" role="status">{store.status}</div>
+      </section>
       {store.error ? <div className="invoice-error no-print" role="alert"><p>{store.error}</p><button className="ghost-btn small" onClick={store.refresh}>Retry shared storage</button>{store.error.includes(`Invoice ${record.invoice.invoiceNumber} changed on another device`) ? <button className="ghost-btn small" onClick={openSharedVersion}>Open shared version and keep my copy</button> : null}</div> : null}
       {notice ? <p className="invoice-notice no-print" role="status">{notice}</p> : null}
       <section className="invoice-history no-print" aria-label="Saved invoice history">
-        <div className="invoice-section-title-row"><h3>Invoice History</h3><div className="invoice-mini-actions">
-          <button className="ghost-btn small" onClick={store.refresh}>Refresh history</button>
-          <button className="ghost-btn small" onClick={() => { try { downloadBackup() } catch (error) { store.setError(error.message) } }}>Export backup</button>
-          <label className="ghost-btn small invoice-import">Import backup<input type="file" accept=".json,application/json" onChange={importBackup} /></label>
-        </div></div>
+        <div className="invoice-section-title-row">
+          <h3>Invoice History</h3>
+          <details className="history-tools">
+            <summary>History tools</summary>
+            <div className="invoice-mini-actions">
+              <button className="ghost-btn small" onClick={store.refresh}>Refresh history</button>
+              <button className="ghost-btn small" onClick={() => { try { downloadBackup() } catch (error) { store.setError(error.message) } }}>Export backup</button>
+              <label className="ghost-btn small invoice-import">Import backup<input type="file" accept=".json,application/json" onChange={importBackup} /></label>
+            </div>
+          </details>
+        </div>
         <div className="invoice-history-filters">
           <label>Search invoices<input placeholder="Customer, vehicle, VIN, or invoice number" value={historySearch} onChange={e => setHistorySearch(e.target.value)} /></label>
           <label>Show<select value={historyFilter} onChange={e => setHistoryFilter(e.target.value)}><option value="all">All documents</option><option value="partial">Partially paid invoices</option><option value="vehicle">This customer and vehicle</option></select></label>
